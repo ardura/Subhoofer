@@ -130,7 +130,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="mdaSubSynth.h" />
     <ClInclude Include="subhoofer.h" />
     <ClInclude Include="vstsdk2.4\pluginterfaces\vst2.x\aeffect.h" />
     <ClInclude Include="vstsdk2.4\pluginterfaces\vst2.x\aeffectx.h" />
@@ -140,8 +139,6 @@
     <ClInclude Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffectx.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="mdaSubSynth.cpp" />
-    <ClCompile Include="smbPitchShift.cpp" />
     <ClCompile Include="subhoofer_proc.cpp" />
     <ClCompile Include="subhoofer.cpp" />
     <ClCompile Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffect.cpp" />

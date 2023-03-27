@@ -6,6 +6,7 @@
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
+#include "smbPitchShift.cpp"
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -178,8 +179,23 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			// Sub calculation code
 			//////////////////////////////////////////////////
 
-			lp = (inputSampleL * inputSampleL) / 2.0;
+			//void smbPitchShift(float pitchShift, long numSampsToProcess, long fftFrameSize, long osamp, float sampleRate, float *indata, float *outdata)
 
+			lp = (inputSampleL * inputSampleL) / 2.0;
+			//float output;
+
+			/*
+  * smbPitchShift params:
+  * 1: "pitchShift"         -> semitones to shift up
+  * 2: "bufferLengthFrames" -> number of samples in input buffer must be larger than FFT_SIZE
+  * 3: "FFT_SIZE"           -> size of the FFT, needs to be a power of 2
+  * 4: "OVER_SAMPLE"        -> fifo buffer overlap factor, more the better but slower, has to be divisable by FFT_SIZE
+  * 5: "sampleRate"         -> sample rate for sin generation
+  * 6: "input"              -> input buffer
+  * 7: "output"             -> output buffer
+  */
+			//smbPitchShift(pitchShift, bufferLengthFrames, OVER_SAMPLE, sampleRate, input, output);
+			//smbPitchShift(0.5, 1, 1, 16, overallscale, lp, output);
 			// Gate from airwindows
 			oscGate += fabs(lp * 10.0);
 			oscGate -= 0.001;
