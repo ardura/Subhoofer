@@ -69,6 +69,9 @@ private:
 	double lastSampleR;
 	double last2SampleR;
 
+	double iirDriveSampleA;
+	double iirDriveSampleB;
+
 	//begin EQ
 	double iirLowSampleLA;
 	double iirLowSampleLB;
@@ -134,6 +137,8 @@ private:
 
 	double lp;
 	double oscGate;
+	bool WasNegative;
+	bool SubOctave;
 
 };
 

@@ -6,7 +6,6 @@
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
-#include "smbPitchShift.cpp"
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -35,11 +34,13 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	// Added by Ardura
 	double subzero = 0.0;
 	double subSample = 0.0;
-	//double subscale = (((A * 12.0) * 0.1) + 0.02) / overallscale;
-	double subscale = ((A * 0.1) + 0.0001) / overallscale;
+	double HeadBumpFreq  = (((A * 12.0) * 0.1) + 0.02) / overallscale;
+	//double HeadBumpFreq  = ((A * 0.1) + 0.0001) / overallscale;
 
-	double iirAmount = subscale / 44.1;
+	double iirAmount = HeadBumpFreq  / 44.1;
 	//double iirAmount = ((C * 0.33) + 0.1) / overallscale;
+
+	double SubOutGain = ((B * 2.0) - 1.0) * fabs(((B * 2.0) - 1.0)) * 4.0;
 
 	double clamp = 0.0;
 	double noise = 0.054;
@@ -75,6 +76,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	{
 		inputSampleL = *in1;
 		inputSampleR = *in2;
+
+		double rand = (double(fpdL) / UINT32_MAX);
+		double invrand = (1 - rand);
+
 		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
@@ -183,19 +188,11 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			lp = (inputSampleL * inputSampleL) / 2.0;
 			//float output;
+			iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); 
+			lp = iirDriveSampleA;
+			iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); 
+			lp = iirDriveSampleB;
 
-			/*
-  * smbPitchShift params:
-  * 1: "pitchShift"         -> semitones to shift up
-  * 2: "bufferLengthFrames" -> number of samples in input buffer must be larger than FFT_SIZE
-  * 3: "FFT_SIZE"           -> size of the FFT, needs to be a power of 2
-  * 4: "OVER_SAMPLE"        -> fifo buffer overlap factor, more the better but slower, has to be divisable by FFT_SIZE
-  * 5: "sampleRate"         -> sample rate for sin generation
-  * 6: "input"              -> input buffer
-  * 7: "output"             -> output buffer
-  */
-			//smbPitchShift(pitchShift, bufferLengthFrames, OVER_SAMPLE, sampleRate, input, output);
-			//smbPitchShift(0.5, 1, 1, 16, overallscale, lp, output);
 			// Gate from airwindows
 			oscGate += fabs(lp * 10.0);
 			oscGate -= 0.001;
@@ -206,27 +203,35 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			clamp *= 0.00001;
 			//set up the thing to choke off oscillations- belt and suspenders affair
 
-			double rand = (double(fpdL) / UINT32_MAX);
-			double invrand = (1 - rand);
+			if (lp > 0)
+			{
+				if (WasNegative) { SubOctave = !SubOctave; } WasNegative = false;
+			}
+			else { WasNegative = true; }
+
+			rand = (double(fpdL) / UINT32_MAX);
+			invrand = (1 - rand);
 
 			//subSample = lp - ((bassSampleL + bassSampleR)/2.0);
 
-			double iirSampleSub = (subSample * (1.0 - iirAmount)) + (subscale * iirAmount);
+			double iirSampleSub = (subSample * (1.0 - iirAmount)) + (HeadBumpFreq  * iirAmount);
 			subSample -= iirSampleSub;
 
 			subSample += fabs(subSample);
-			subSample -= (subSample * subSample * subSample * subscale);
+			if (SubOctave == false) { subSample = -subSample; }
+
+			subSample -= (subSample * subSample * subSample * HeadBumpFreq );
 			subSample = (invrand * subSample) + (rand * subSample) + (rand * subSample);
 			if (subSample > 0) subSample -= clamp;
 			if (subSample < 0) subSample += clamp;
 
-			//subSample = (subSample * (1.0 - iirAmount)) + (subscale * iirAmount);
+			//subSample = (subSample * (1.0 - iirAmount)) + (HeadBumpFreq  * iirAmount);
 
 
 			if (B != 0.0)
 			{
-				bassSampleL += subSample * ( B * 12.0 );
-				bassSampleR += subSample * ( B * 12.0 );
+				bassSampleL += (subSample * SubOutGain);
+				bassSampleR += (subSample * SubOutGain);
 			}
 
 			//////////////////////////////////////////////////
@@ -362,7 +367,7 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 
 	// Added by Ardura
 	double subSample = 0.0;
-	double subscale = ((A * 0.1) + 0.02) / overallscale;
+	double HeadBumpFreq  = ((A * 0.1) + 0.02) / overallscale;
 	double clamp = 0.0;
 
 	double densityC = (C * 24.0) - 12.0;
@@ -514,7 +519,7 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 			if (A != 0)
 			{
 				subSample += (lp)*densityC;
-				subSample -= (subSample * subSample * subSample * subscale);
+				subSample -= (subSample * subSample * subSample * HeadBumpFreq );
 
 				if (subSample > 0) subSample -= clamp;
 				if (subSample < 0) subSample += clamp;
