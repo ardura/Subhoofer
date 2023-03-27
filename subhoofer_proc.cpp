@@ -21,6 +21,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	compscale = compscale * overallscale;
 	//compscale is the one that's 1 or something like 2.2 for 96K rates
 
+	// Modified by Ardura
 	double inputSampleL;
 	double inputSampleR;
 
@@ -29,6 +30,18 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 	double midSampleR = 0.0;
 	double bassSampleR = 0.0;
+
+	// Added by Ardura
+	double subzero = 0.0;
+	double subSample = 0.0;
+	//double subscale = (((A * 12.0) * 0.1) + 0.02) / overallscale;
+	double subscale = ((A * 0.1) + 0.0001) / overallscale;
+
+	double iirAmount = subscale / 44.1;
+	//double iirAmount = ((C * 0.33) + 0.1) / overallscale;
+
+	double clamp = 0.0;
+	double noise = 0.054;
 
 	double densityC = (C * 24.0) - 12.0;
 	bool engageEQ = true;
@@ -43,10 +56,11 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 	//double iirAmountC = (((D * D * 15.0) + 1.0) * 0.0188) + 0.7;
 	//Changed iirAmountC to see if that makes a steeper filter
-	double iirAmountC = (((D * D * 19.0) + 1.0) * 0.02) + 0.3;
+	//double iirAmountC = (D * D * 4);
+	double iirAmountC = (4 * D * D);
 	if (iirAmountC > 1.0) iirAmountC = 1.0;
 	bool engageLowpass = false;
-	if (((D * D * 19.0) + 1.0) < 19.99) engageLowpass = true;
+	if ((D * D * 4) < 4) engageLowpass = true;
 
 	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
 	//bypass the highpass and lowpass if set to extremes
@@ -158,7 +172,50 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			// Needed to change this to only be for bass
 			midSampleL = (inputSampleL - bassSampleL);
-			midSampleR = (inputSampleR - bassSampleR);
+			midSampleR = (inputSampleR - bassSampleL);
+
+			//////////////////////////////////////////////////
+			// Sub calculation code
+			//////////////////////////////////////////////////
+
+			lp = (inputSampleL * inputSampleL) / 2.0;
+
+			// Gate from airwindows
+			oscGate += fabs(lp * 10.0);
+			oscGate -= 0.001;
+			if (oscGate > 1.0) oscGate = 1.0;
+			if (oscGate < 0) oscGate = 0;
+			//got a value that only goes down low when there's silence or near silence on input
+			clamp = 1.0 - oscGate;
+			clamp *= 0.00001;
+			//set up the thing to choke off oscillations- belt and suspenders affair
+
+			double rand = (double(fpdL) / UINT32_MAX);
+			double invrand = (1 - rand);
+
+			//subSample = lp - ((bassSampleL + bassSampleR)/2.0);
+
+			double iirSampleSub = (subSample * (1.0 - iirAmount)) + (subscale * iirAmount);
+			subSample -= iirSampleSub;
+
+			subSample += fabs(subSample);
+			subSample -= (subSample * subSample * subSample * subscale);
+			subSample = (invrand * subSample) + (rand * subSample) + (rand * subSample);
+			if (subSample > 0) subSample -= clamp;
+			if (subSample < 0) subSample += clamp;
+
+			//subSample = (subSample * (1.0 - iirAmount)) + (subscale * iirAmount);
+
+
+			if (B != 0.0)
+			{
+				bassSampleL += subSample * ( B * 12.0 );
+				bassSampleR += subSample * ( B * 12.0 );
+			}
+
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
 
 			//drive section
 			bassSampleL *= (densityC + 1.0);
@@ -235,11 +292,14 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
 		}
 
+		 
 		//built in output trim and dry/wet if desired
 		if (outputgain != 1.0) {
 			inputSampleL *= outputgain;
 			inputSampleR *= outputgain;
 		}
+
+
 
 		//begin 32 bit stereo floating point dither
 		int expon; 
@@ -260,7 +320,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		*out2++;
 	}
 }
-
+/*
 void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames)
 {
 	double* in1 = inputs[0];
@@ -283,6 +343,11 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 
 	double midSampleR = 0.0;
 	double bassSampleR = 0.0;
+
+	// Added by Ardura
+	double subSample = 0.0;
+	double subscale = ((A * 0.1) + 0.02) / overallscale;
+	double clamp = 0.0;
 
 	double densityC = (C * 24.0) - 12.0;
 	bool engageEQ = true;
@@ -415,6 +480,36 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 			midSampleL = (inputSampleL - bassSampleL);
 			midSampleR = (inputSampleR - bassSampleR);
 
+
+			//////////////////////////////////////////////////
+			// Sub calculation code
+			//////////////////////////////////////////////////
+
+			lp = (bassSampleL * bassSampleR) / 2;
+			oscGate += fabs(lp * 10.0);
+			oscGate -= 0.001;
+			if (oscGate > 1.0) oscGate = 1.0;
+			if (oscGate < 0) oscGate = 0;
+			//got a value that only goes down low when there's silence or near silence on input
+			clamp = 1.0 - oscGate;
+			clamp *= 0.00001;
+			//set up the thing to choke off oscillations- belt and suspenders affair
+
+			if (A != 0)
+			{
+				subSample += (lp)*densityC;
+				subSample -= (subSample * subSample * subSample * subscale);
+
+				if (subSample > 0) subSample -= clamp;
+				if (subSample < 0) subSample += clamp;
+
+				//subSample *= subSample * A * 6;
+			}
+
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
+
 			//drive section
 			bassSampleL *= (densityC + 1.0);
 			bridgerectifier = fabs(bassSampleL) * 1.57079633;
@@ -446,6 +541,15 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 
 			inputSampleR = midSampleR;
 			inputSampleR += bassSampleR;
+
+			if (subSample != 0.0)
+			{
+				inputSampleL += subSample;
+			}
+			if (subSample != 0.0)
+			{
+				inputSampleR += subSample;
+			}
 		}
 		//end EQ
 
@@ -531,3 +635,4 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 		*out2++;
 	}
 }
+*/

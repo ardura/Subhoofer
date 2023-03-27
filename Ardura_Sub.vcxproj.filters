@@ -36,6 +36,9 @@
     <ClInclude Include="subhoofer.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="mdaSubSynth.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffect.cpp">
@@ -51,6 +54,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="subhoofer_proc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mdaSubSynth.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="smbPitchShift.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

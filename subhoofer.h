@@ -18,14 +18,14 @@
 
 enum {
 	kParamA = 0,	
-	//kParamB = 1,
-	kParamC = 1,
-	kParamD = 2,
+	kParamB = 1,
+	kParamC = 2,
+	kParamD = 3,
 	//kParamE = 4,
-	kParamF = 3,
+	kParamF = 4,
 	//kParamG = 6,
-	kParamH = 4,
-	kNumParameters = 5
+	kParamH = 5,
+	kNumParameters = 6
 }; //
 
 const int kNumPrograms = 0;
@@ -45,7 +45,7 @@ public:
 	virtual bool getVendorString(char* text);                     // Vendor info
 	virtual VstInt32 getVendorVersion();                          // Version number
 	virtual void processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames);
-	virtual void processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames);
+	//virtual void processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames);
 	virtual void getProgramName(char* name);                      // read the name from the host
 	virtual void setProgramName(char* name);                      // changes the name of the preset displayed in the host
 	virtual VstInt32 getChunk(void** data, bool isPreset);
@@ -70,30 +70,18 @@ private:
 	double last2SampleR;
 
 	//begin EQ
-	double iirHighSampleLA;
-	double iirHighSampleLB;
-	double iirHighSampleLC;
-	double iirHighSampleLD;
-	double iirHighSampleLE;
 	double iirLowSampleLA;
 	double iirLowSampleLB;
 	double iirLowSampleLC;
 	double iirLowSampleLD;
 	double iirLowSampleLE;
-	double iirHighSampleL;
 	double iirLowSampleL;
 
-	double iirHighSampleRA;
-	double iirHighSampleRB;
-	double iirHighSampleRC;
-	double iirHighSampleRD;
-	double iirHighSampleRE;
 	double iirLowSampleRA;
 	double iirLowSampleRB;
 	double iirLowSampleRC;
 	double iirLowSampleRD;
 	double iirLowSampleRE;
-	double iirHighSampleR;
 	double iirLowSampleR;
 
 	double tripletLA;
@@ -130,41 +118,22 @@ private:
 	double lowpassSampleRF;
 	double lowpassSampleRG;
 
-	double highpassSampleLAA;
-	double highpassSampleLAB;
-	double highpassSampleLBA;
-	double highpassSampleLBB;
-	double highpassSampleLCA;
-	double highpassSampleLCB;
-	double highpassSampleLDA;
-	double highpassSampleLDB;
-	double highpassSampleLE;
-	double highpassSampleLF;
-
-	double highpassSampleRAA;
-	double highpassSampleRAB;
-	double highpassSampleRBA;
-	double highpassSampleRBB;
-	double highpassSampleRCA;
-	double highpassSampleRCB;
-	double highpassSampleRDA;
-	double highpassSampleRDB;
-	double highpassSampleRE;
-	double highpassSampleRF;
-
 	bool flip;
 	int flipthree;
 	//end EQ
 
 
 	float A;
-	//float B;
+	float B;
 	float C;
 	float D;
 	//float E;
 	float F;
 	//float G;
 	float H;
+
+	double lp;
+	double oscGate;
 
 };
 
