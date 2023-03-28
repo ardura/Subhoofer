@@ -188,15 +188,16 @@ void subhoofer::getParameterName(VstInt32 index, char* text) {
 
 void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 	switch (index) {
-	case kParamA: float2string((A), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
+	//case kParamA: float2string((A), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
+	case kParamA: float2string((A), text, 0); break; //Sub Amt 0-1
 	case kParamB: float2string((B * 12 ), text, kVstMaxParamStrLen); break; //SubGain -12 to 12
-	case kParamC: float2string((C * 24.0) - 12.0, text, kVstMaxParamStrLen); break; //BassGain -12 to 12
-	//case kParamD: float2string((D * D * 19.0) + 1.0, text, kVstMaxParamStrLen); break; //Lowpass 20.0K log 1 to 20 defaulting to 20K
-	case kParamD: float2string((4 * D * D), text, kVstMaxParamStrLen); break;
+	case kParamC: float2string((C * 12.0) - 6.0, text, kVstMaxParamStrLen); break; // LowGain -6 to 6
+	//case kParamD: float2string((4 * D * D), text, kVstMaxParamStrLen); break;
+	case kParamD: float2string(D, text, 0); break;
 	//	case kParamE: float2string((E * E * 15.0) + 1.0, text, kVstMaxParamStrLen); break; //TrebFrq 6.0 log 1 to 16 defaulting to 6K
-	case kParamF: float2string((F * F * 770.0) + 30.0, text, kVstMaxParamStrLen); break; //BassFrq 100.0 log 30 to 1600 defaulting to 100 hz
+	case kParamF: float2string(floor((F * F * 770.0) + 30.0), text, kVstMaxParamStrLen); break; //BassFrq 100.0 log 30 to 1600 defaulting to 100 hz
 	//	case kParamG: float2string((G * G * 1570.0) + 30.0, text, kVstMaxParamStrLen); break; //Hipass 30.0 log 30 to 1600 defaulting to 30
-	case kParamH: float2string((H * 36.0) - 18.0, text, kVstMaxParamStrLen); break; //OutGain -12 to 12	//Edited by Ardura
+	case kParamH: float2string(round(((H * 36.0) - 18.0)*100.0)/100.0, text, kVstMaxParamStrLen); break; //OutGain -12 to 12	//Edited by Ardura
 	default: break; // unknown parameter, shouldn't happen!
 	} //this displays the values and handles 'popups' where it's discrete choices
 }
@@ -204,13 +205,13 @@ void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 void subhoofer::getParameterLabel(VstInt32 index, char* text) {
 	switch (index) {
 	case kParamA: vst_strncpy(text, "hoof", kVstMaxParamStrLen); break;
-	case kParamB: vst_strncpy(text, "", kVstMaxParamStrLen); break;
-	case kParamC: vst_strncpy(text, "dB", kVstMaxParamStrLen); break;
-	case kParamD: vst_strncpy(text, "", kVstMaxParamStrLen); break;
+	case kParamB: vst_strncpy(text, "dB", 3); break;
+	case kParamC: vst_strncpy(text, "dB", 3); break;
+	case kParamD: vst_strncpy(text, "", 0); break;
 	//	case kParamE: vst_strncpy(text, "Khz", kVstMaxParamStrLen); break;
 	case kParamF: vst_strncpy(text, "hz", kVstMaxParamStrLen); break;
 	//	case kParamG: vst_strncpy(text, "hz", kVstMaxParamStrLen); break;
-	case kParamH: vst_strncpy(text, "dB", kVstMaxParamStrLen); break;
+	case kParamH: vst_strncpy(text, "dB", 3); break;
 	default: break; // unknown parameter, shouldn't happen!
 	}
 }

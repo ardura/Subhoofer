@@ -64,6 +64,10 @@ private:
 	uint32_t fpdR;
 	//default stuff
 
+
+	// Samplerate
+	double overallscale = 0.0;
+
 	double lastSampleL;
 	double last2SampleL;
 	double lastSampleR;
@@ -71,6 +75,9 @@ private:
 
 	double iirDriveSampleA;
 	double iirDriveSampleB;
+	double iirHeadBumpA;
+	double iirHeadBumpB;
+	double iirHeadBumpC;
 
 	//begin EQ
 	double iirLowSampleLA;
@@ -125,7 +132,56 @@ private:
 	int flipthree;
 	//end EQ
 
+	// Samples for bass reduction
+	double iirSampleA;
+	double iirSampleB;
+	double iirSampleC;
+	double iirSampleD;
+	double iirSampleE;
+	double iirSampleF;
+	double iirSampleG;
+	double iirSampleH;
+	double iirSampleI;
+	double iirSampleJ;
+	double iirSampleK;
+	double iirSampleL;
+	double iirSampleM;
+	double iirSampleN;
+	double iirSampleO;
+	double iirSampleP;
+	double iirSampleQ;
+	double iirSampleR;
+	double iirSampleS;
+	double iirSampleT;
+	double iirSampleU;
+	double iirSampleV;
+	double iirSampleW;
+	double iirSampleX;
+	double iirSampleY;
+	double iirSampleZ;
+	
+	double iirSubBumpA;
+	double iirSubBumpB;
+	double iirSubBumpC;
 
+	double HeadBump;
+	double SubBump;
+	double lp;
+	double oscGate;
+
+	double iirDriveSampleC;
+	double iirDriveSampleD;
+	double iirDriveSampleE;
+	double iirDriveSampleF;
+
+	// Sub logic
+	bool WasNegative;
+	bool SubOctave;
+
+	// Counter
+	int bflip;
+
+	// Inputs
 	float A;
 	float B;
 	float C;
@@ -135,10 +191,8 @@ private:
 	//float G;
 	float H;
 
-	double lp;
-	double oscGate;
-	bool WasNegative;
-	bool SubOctave;
+	
+	
 
 };
 

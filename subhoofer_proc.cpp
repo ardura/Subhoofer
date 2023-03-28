@@ -14,14 +14,11 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	float* out1 = outputs[0];
 	float* out2 = outputs[1];
 
-	double overallscale = 1.0;
-	overallscale /= 44100.0;
-	double compscale = overallscale;
 	overallscale = getSampleRate();
-	compscale = compscale * overallscale;
-	//compscale is the one that's 1 or something like 2.2 for 96K rates
 
-	// Modified by Ardura
+	double clamp = 0.0;
+
+	// Samples to hold input and EQ changes
 	double inputSampleL;
 	double inputSampleR;
 
@@ -31,45 +28,45 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double midSampleR = 0.0;
 	double bassSampleR = 0.0;
 
-	// Added by Ardura
-	double subzero = 0.0;
-	double subSample = 0.0;
-	double HeadBumpFreq  = (((A * 12.0) * 0.1) + 0.02) / overallscale;
-	//double HeadBumpFreq  = ((A * 0.1) + 0.0001) / overallscale;
-
+	// Sub freq knob
+	double HeadBumpFreq  = (((A) * 0.1) + 0.02) / overallscale;
 	double iirAmount = HeadBumpFreq  / 44.1;
-	//double iirAmount = ((C * 0.33) + 0.1) / overallscale;
 
-	double SubOutGain = ((B * 2.0) - 1.0) * fabs(((B * 2.0) - 1.0)) * 4.0;
+	// Sub Gain knob
+	double SubOutGain = B*12;
 
-	double clamp = 0.0;
-	double noise = 0.054;
+	// Low Gain knob
+	double lowGain = (C * 24.0) - 12.0;
+	//double lowGain = pow(10.0, ((C * 12) - 6) / 20.0);
 
-	double densityC = (C * 24.0) - 12.0;
+
 	bool engageEQ = true;
-	if (0.0 == densityC) engageEQ = false;
+	if (0.0 == lowGain) engageEQ = false;
 
-	densityC = pow(10.0, densityC / 20.0) - 1.0;
+		
+	lowGain = pow(10.0, lowGain / 20.0) - 1.0;
 	//convert to 0 to X multiplier with 1.0 being O db
 	//minus one gives nearly -1 to ? (should top out at 1)
 	//calibrate so that X db roughly equals X db with maximum topping out at 1 internally
 
-	double tripletIntensity = -densityC;
+	// Fixing triplet without breaking lowGain variable
+	//double tripletIntensity = -lowGain;
+	double tripletIntensity = -lowGain;
 
-	//double iirAmountC = (((D * D * 15.0) + 1.0) * 0.0188) + 0.7;
-	//Changed iirAmountC to see if that makes a steeper filter
-	//double iirAmountC = (D * D * 4);
+	// Lowpass knob
 	double iirAmountC = (4 * D * D);
 	if (iirAmountC > 1.0) iirAmountC = 1.0;
 	bool engageLowpass = false;
 	if ((D * D * 4) < 4) engageLowpass = true;
 
+	// Splitfrq Knob
 	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
-	//bypass the highpass and lowpass if set to extremes
+
+
 	double bridgerectifier;
 
-	double outC = fabs(densityC);
-	//end EQ
+	double outC = fabs(lowGain);
+
 	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
 
 	while (--sampleFrames >= 0)
@@ -82,6 +79,23 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
+
+		// Calculate the lowpass to be used
+		lp = (inputSampleL * inputSampleR) / 2.0;
+		iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq);
+		lp = iirDriveSampleA;
+		iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq);
+		lp = iirDriveSampleB;
+
+		// Gate from airwindows
+		oscGate += fabs(lp * 10.0);
+		oscGate -= 0.001;
+		if (oscGate > 1.0) oscGate = 1.0;
+		if (oscGate < 0) oscGate = 0;
+		//got a value that only goes down low when there's silence or near silence on input
+		clamp = 1.0 - oscGate;
+		clamp *= 0.00001;
+		//set up the thing to choke off oscillations- belt and suspenders affair
 
 		last2SampleL = lastSampleL;
 		lastSampleL = inputSampleL;
@@ -99,51 +113,51 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		{
 			switch (flipthree)
 			{
-			case 1:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLA += tripletFactorL;
-				tripletLC -= tripletFactorL;
-				tripletFactorL = tripletLA;
-				iirLowSampleLC = (iirLowSampleLC * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLC;
+				case 1:
+					tripletFactorL = last2SampleL - inputSampleL;
+					tripletLA += tripletFactorL;
+					tripletLC -= tripletFactorL;
+					tripletFactorL = tripletLA;
+					iirLowSampleLC = (iirLowSampleLC * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
+					bassSampleL = iirLowSampleLC;
 
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRA += tripletFactorR;
-				tripletRC -= tripletFactorR;
-				tripletFactorR = tripletRA;
-				iirLowSampleRC = (iirLowSampleRC * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRC;
-				break;
-			case 2:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLB += tripletFactorL;
-				tripletLA -= tripletFactorL;
-				tripletFactorL = tripletLB;
-				iirLowSampleLD = (iirLowSampleLD * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLD;
+					tripletFactorR = last2SampleR - inputSampleR;
+					tripletRA += tripletFactorR;
+					tripletRC -= tripletFactorR;
+					tripletFactorR = tripletRA;
+					iirLowSampleRC = (iirLowSampleRC * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
+					bassSampleR = iirLowSampleRC;
+					break;
+				case 2:
+					tripletFactorL = last2SampleL - inputSampleL;
+					tripletLB += tripletFactorL;
+					tripletLA -= tripletFactorL;
+					tripletFactorL = tripletLB;
+					iirLowSampleLD = (iirLowSampleLD * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
+					bassSampleL = iirLowSampleLD;
 
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRB += tripletFactorR;
-				tripletRA -= tripletFactorR;
-				tripletFactorR = tripletRB;
-				iirLowSampleRD = (iirLowSampleRD * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRD;
-				break;
-			case 3:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLC += tripletFactorL;
-				tripletLB -= tripletFactorL;
-				tripletFactorL = tripletLC;
-				iirLowSampleLE = (iirLowSampleLE * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLE;
+					tripletFactorR = last2SampleR - inputSampleR;
+					tripletRB += tripletFactorR;
+					tripletRA -= tripletFactorR;
+					tripletFactorR = tripletRB;
+					iirLowSampleRD = (iirLowSampleRD * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
+					bassSampleR = iirLowSampleRD;
+					break;
+				case 3:
+					tripletFactorL = last2SampleL - inputSampleL;
+					tripletLC += tripletFactorL;
+					tripletLB -= tripletFactorL;
+					tripletFactorL = tripletLC;
+					iirLowSampleLE = (iirLowSampleLE * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
+					bassSampleL = iirLowSampleLE;
 
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRC += tripletFactorR;
-				tripletRB -= tripletFactorR;
-				tripletFactorR = tripletRC;
-				iirLowSampleRE = (iirLowSampleRE * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRE;
-				break;
+					tripletFactorR = last2SampleR - inputSampleR;
+					tripletRC += tripletFactorR;
+					tripletRB -= tripletFactorR;
+					tripletFactorR = tripletRC;
+					iirLowSampleRE = (iirLowSampleRE * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
+					bassSampleR = iirLowSampleRE;
+					break;
 			}
 			tripletLA /= 2.0;
 			tripletLB /= 2.0;
@@ -178,88 +192,30 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			// Needed to change this to only be for bass
 			midSampleL = (inputSampleL - bassSampleL);
-			midSampleR = (inputSampleR - bassSampleL);
-
-			//////////////////////////////////////////////////
-			// Sub calculation code
-			//////////////////////////////////////////////////
-
-			//void smbPitchShift(float pitchShift, long numSampsToProcess, long fftFrameSize, long osamp, float sampleRate, float *indata, float *outdata)
-
-			lp = (inputSampleL * inputSampleL) / 2.0;
-			//float output;
-			iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); 
-			lp = iirDriveSampleA;
-			iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); 
-			lp = iirDriveSampleB;
-
-			// Gate from airwindows
-			oscGate += fabs(lp * 10.0);
-			oscGate -= 0.001;
-			if (oscGate > 1.0) oscGate = 1.0;
-			if (oscGate < 0) oscGate = 0;
-			//got a value that only goes down low when there's silence or near silence on input
-			clamp = 1.0 - oscGate;
-			clamp *= 0.00001;
-			//set up the thing to choke off oscillations- belt and suspenders affair
-
-			if (lp > 0)
-			{
-				if (WasNegative) { SubOctave = !SubOctave; } WasNegative = false;
-			}
-			else { WasNegative = true; }
-
-			rand = (double(fpdL) / UINT32_MAX);
-			invrand = (1 - rand);
-
-			//subSample = lp - ((bassSampleL + bassSampleR)/2.0);
-
-			double iirSampleSub = (subSample * (1.0 - iirAmount)) + (HeadBumpFreq  * iirAmount);
-			subSample -= iirSampleSub;
-
-			subSample += fabs(subSample);
-			if (SubOctave == false) { subSample = -subSample; }
-
-			subSample -= (subSample * subSample * subSample * HeadBumpFreq );
-			subSample = (invrand * subSample) + (rand * subSample) + (rand * subSample);
-			if (subSample > 0) subSample -= clamp;
-			if (subSample < 0) subSample += clamp;
-
-			//subSample = (subSample * (1.0 - iirAmount)) + (HeadBumpFreq  * iirAmount);
-
-
-			if (B != 0.0)
-			{
-				bassSampleL += (subSample * SubOutGain);
-				bassSampleR += (subSample * SubOutGain);
-			}
-
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
+			midSampleR = (inputSampleR - bassSampleR);
 
 			//drive section
-			bassSampleL *= (densityC + 1.0);
+			bassSampleL *= (lowGain + 1.0);
 			bridgerectifier = fabs(bassSampleL) * 1.57079633;
 			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
 			//max value for sine function
-			if (densityC > 0) bridgerectifier = sin(bridgerectifier);
+			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
 			else bridgerectifier = 1 - cos(bridgerectifier);
 			//produce either boosted or starved version
 			if (bassSampleL > 0) bassSampleL = (bassSampleL * (1 - outC)) + (bridgerectifier * outC);
 			else bassSampleL = (bassSampleL * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to densityC control
+			//blend according to lowGain control
 
-			bassSampleR *= (densityC + 1.0);
+			bassSampleR *= (lowGain + 1.0);
 			bridgerectifier = fabs(bassSampleR) * 1.57079633;
 			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
 			//max value for sine function
-			if (densityC > 0) bridgerectifier = sin(bridgerectifier);
+			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
 			else bridgerectifier = 1 - cos(bridgerectifier);
 			//produce either boosted or starved version
 			if (bassSampleR > 0) bassSampleR = (bassSampleR * (1 - outC)) + (bridgerectifier * outC);
 			else bassSampleR = (bassSampleR * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to densityC control
+			//blend according to lowGain control
 
 			// Summing outputs
 			inputSampleL = midSampleL;
@@ -267,10 +223,186 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			inputSampleR = midSampleR;
 			inputSampleR += bassSampleR;
-		}
-		//end EQ
 
-		//EQ lowpass is after all processing like the compressor that might produce hash
+			// END EQ
+
+			//////////////////////////////////////////////////
+			// Sub calculation code
+			//////////////////////////////////////////////////
+
+			if (lp > 0)
+			{
+				if (WasNegative)
+				{
+					SubOctave = !SubOctave;
+				}
+				WasNegative = false;
+			}
+			else
+			{
+				WasNegative = true;
+			}
+
+			/*
+			// This calculates a low pass, then different samples from it and substracts from the low pass even more
+			iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleA;
+			iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleB;
+			iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleC;
+			iirSampleD = (iirSampleD * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleD;
+			iirSampleE = (iirSampleE * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleE;
+			iirSampleF = (iirSampleF * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleF;
+			iirSampleG = (iirSampleG * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleG;
+			iirSampleH = (iirSampleH * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleH;
+			iirSampleI = (iirSampleI * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleI;
+			iirSampleJ = (iirSampleJ * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleJ;
+			iirSampleK = (iirSampleK * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleK;
+			iirSampleL = (iirSampleL * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleL;
+			iirSampleM = (iirSampleM * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleM;
+			iirSampleN = (iirSampleN * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleN;
+			iirSampleO = (iirSampleO * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleO;
+			iirSampleP = (iirSampleP * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleP;
+			iirSampleQ = (iirSampleQ * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleQ;
+			iirSampleR = (iirSampleR * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleR;
+			iirSampleS = (iirSampleS * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleS;
+			iirSampleT = (iirSampleT * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleT;
+			iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleU;
+			iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);
+			lp -= iirSampleV;
+			
+
+			switch (bflip)
+			{
+				case 1:
+					iirHeadBumpA += (lp);
+					iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
+					iirHeadBumpA = (invrand * iirHeadBumpA) + (rand * iirHeadBumpB) + (rand * iirHeadBumpC);
+					if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
+					if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
+					HeadBump = iirHeadBumpA;
+					break;
+				case 2:
+					iirHeadBumpB += (lp);
+					iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
+					iirHeadBumpB = (rand * iirHeadBumpA) + (invrand * iirHeadBumpB) + (rand * iirHeadBumpC);
+					if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
+					if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
+					HeadBump = iirHeadBumpB;
+					break;
+				case 3:
+					iirHeadBumpC += (lp);
+					iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
+					iirHeadBumpC = (rand * iirHeadBumpA) + (rand * iirHeadBumpB) + (invrand * iirHeadBumpC);
+					if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
+					if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
+					HeadBump = iirHeadBumpC;
+					break;
+			}
+			*/
+			HeadBump = lp;
+
+			// Calculate drive samples based off what we've done so far		
+			iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 
+			HeadBump -= iirSampleW;
+			iirSampleX = (iirSampleX * (1.0 - iirAmount)) + (HeadBump * iirAmount); 
+			HeadBump -= iirSampleX;
+
+			// Create SubBump sample from our head bump to modify further
+			SubBump = HeadBump;
+			iirSampleY = (iirSampleY * (1.0 - iirAmount)) + (SubBump * iirAmount);
+			SubBump -= iirSampleY;
+
+			// Calculate sub drive samples based off what we've done so far		
+			iirDriveSampleC = (iirDriveSampleC * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);
+			SubBump = iirDriveSampleC;
+			iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);
+			SubBump = iirDriveSampleD;
+
+			rand = (double(fpdL) / UINT32_MAX);
+			invrand = (1 - rand);
+			rand /= 2.0;
+
+
+			SubBump = fabs(SubBump);
+			if (SubOctave == false) { SubBump = -SubBump; }
+
+			// Note the rand is what is flipping from positive to negative here
+			// This means bflip = 1 A gets inverted
+			// This means bflip = 2 B gets inverted
+			// This means bflip = 3 C gets inverted
+			// This creates a lower octave using math jank on the multiplication depending on sample
+			switch (bflip)
+			{
+				case 1:
+					iirSubBumpA += SubBump;// * BassGain);
+					iirSubBumpA -= (iirSubBumpA * iirSubBumpA * iirSubBumpA * HeadBumpFreq);
+					iirSubBumpA = (invrand * iirSubBumpA) + (rand * iirSubBumpB) + (rand * iirSubBumpC);
+					if (iirSubBumpA > 0) iirSubBumpA -= clamp;
+					if (iirSubBumpA < 0) iirSubBumpA += clamp;
+					SubBump = iirSubBumpA;
+					break;
+				case 2:
+					iirSubBumpB += SubBump;// * BassGain);
+					iirSubBumpB -= (iirSubBumpB * iirSubBumpB * iirSubBumpB * HeadBumpFreq);
+					iirSubBumpB = (rand * iirSubBumpA) + (invrand * iirSubBumpB) + (rand * iirSubBumpC);
+					if (iirSubBumpB > 0) iirSubBumpB -= clamp;
+					if (iirSubBumpB < 0) iirSubBumpB += clamp;
+					SubBump = iirSubBumpB;
+					break;
+				case 3:
+					iirSubBumpC += SubBump;// * BassGain);
+					iirSubBumpC -= (iirSubBumpC * iirSubBumpC * iirSubBumpC * HeadBumpFreq);
+					iirSubBumpC = (rand * iirSubBumpA) + (rand * iirSubBumpB) + (invrand * iirSubBumpC);
+					if (iirSubBumpC > 0) iirSubBumpC -= clamp;
+					if (iirSubBumpC < 0) iirSubBumpC += clamp;
+					SubBump = iirSubBumpC;
+					break;
+			}
+
+			// Resample to reduce the sub bump further
+			iirSampleZ = (iirSampleZ * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq); 
+			SubBump = iirSampleZ;
+			iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 
+			SubBump = iirDriveSampleE;
+			iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 
+			SubBump = iirDriveSampleF;
+
+
+			// Sub gain only
+			inputSampleL += (SubBump * SubOutGain);
+			inputSampleR += (SubBump * SubOutGain);
+
+			//inputSampleL += (HeadBump * BassOutGain);
+			//inputSampleR += (HeadBump * BassOutGain);
+
+
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
+			//////////////////////////////////////////////////
+
+		}
+
+		//	Lowpass is after all processing like the compressor that might produce hash
 		if (engageLowpass)
 		{
 			if (flip)
@@ -320,7 +452,9 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR *= outputgain;
 		}
 
-
+		flip = !flip;
+		bflip++;
+		if (bflip < 1 || bflip > 3) bflip = 1;
 
 		//begin 32 bit stereo floating point dither
 		int expon; 
@@ -341,6 +475,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		*out2++;
 	}
 }
+
 /*
 void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames)
 {
@@ -366,20 +501,20 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 	double bassSampleR = 0.0;
 
 	// Added by Ardura
-	double subSample = 0.0;
+	double iirHeadBumpA = 0.0;
 	double HeadBumpFreq  = ((A * 0.1) + 0.02) / overallscale;
 	double clamp = 0.0;
 
-	double densityC = (C * 24.0) - 12.0;
+	double lowGain = (C * 24.0) - 12.0;
 	bool engageEQ = true;
-	if (0.0 == densityC) engageEQ = false;
+	if (0.0 == lowGain) engageEQ = false;
 
-	densityC = pow(10.0, densityC / 20.0) - 1.0;
+	lowGain = pow(10.0, lowGain / 20.0) - 1.0;
 	//convert to 0 to X multiplier with 1.0 being O db
 	//minus one gives nearly -1 to ? (should top out at 1)
 	//calibrate so that X db roughly equals X db with maximum topping out at 1 internally
 
-	double tripletIntensity = -densityC;
+	double tripletIntensity = -lowGain;
 
 	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
 	//bypass the highpass and lowpass if set to extremes
@@ -392,7 +527,7 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 	bool engageLowpass = false;
 	if (((D * D * 19.0) + 1.0) < 19.99) engageLowpass = true;
 
-	double outC = fabs(densityC);
+	double outC = fabs(lowGain);
 	//end EQ
 	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
 
@@ -518,7 +653,7 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 
 			if (A != 0)
 			{
-				subSample += (lp)*densityC;
+				iirHeadBumpA += (lp)*lowGain;
 				subSample -= (subSample * subSample * subSample * HeadBumpFreq );
 
 				if (subSample > 0) subSample -= clamp;
@@ -532,29 +667,29 @@ void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt
 			//////////////////////////////////////////////////
 
 			//drive section
-			bassSampleL *= (densityC + 1.0);
+			bassSampleL *= (lowGain + 1.0);
 			bridgerectifier = fabs(bassSampleL) * 1.57079633;
 
 			// Modified this to set bridgerectifier if undefined
 			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
 			//max value for sine function
-			if (densityC > 0) bridgerectifier = sin(bridgerectifier);
+			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
 			else bridgerectifier = 1 - cos(bridgerectifier);
 			//produce either boosted or starved version
 			if (bassSampleL > 0) bassSampleL = (bassSampleL * (1 - outC)) + (bridgerectifier * outC);
 			else				 bassSampleL = (bassSampleL * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to densityC control
+			//blend according to lowGain control
 
-			bassSampleR *= (densityC + 1.0);
+			bassSampleR *= (lowGain + 1.0);
 			bridgerectifier = fabs(bassSampleR) * 1.57079633;
 			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
 			//max value for sine function
-			if (densityC > 0) bridgerectifier = sin(bridgerectifier);
+			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
 			else bridgerectifier = 1 - cos(bridgerectifier);
 			//produce either boosted or starved version
 			if (bassSampleR > 0) bassSampleR = (bassSampleR * (1 - outC)) + (bridgerectifier * outC);
 			else				 bassSampleR = (bassSampleR * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to densityC control
+			//blend according to lowGain control
 
 			// Summing outputs
 			inputSampleL = midSampleL;
