@@ -14,10 +14,10 @@ subhoofer::subhoofer(audioMasterCallback audioMaster) :
 {
 	A = 0.0; //Hoof, 0 to 1
 	B = 0.0; //Sub 0 to 12
-	C = 0.5; //Bass -12 to 12
+	C = 0.5; //Mid Drive
 	D = 1.0; //Lowpass 16.0K log 1 to 16 defaulting to 16K
 	//	E = 0.4; //TrebFrq 6.0 log 1 to 16 defaulting to 6K
-	F = 0.4; //BassFrq 100.0 log 30 to 1600 defaulting to 100 hz
+	F = 0.4; //Mid drive freq
 	//	G = 0.0; //Hipass 30.0 log 30 to 1600 defaulting to 30
 	H = 0.5; //OutGain -18 to 18
 
@@ -110,8 +110,8 @@ static float pinParameter(float data)
 VstInt32 subhoofer::getChunk(void** data, bool isPreset)
 {
 	float* chunkData = (float*)calloc(kNumParameters, sizeof(float));
-	chunkData[0] = A;		// Hoof
-	chunkData[1] = B;		//SubGain
+	chunkData[0] = A;		// Sub Amt
+	chunkData[1] = B;		// SubGain
 	chunkData[2] = C;		// Bass Gain
 	chunkData[3] = D;		// Low Pass
 	//chunkData[4] = E;
@@ -176,10 +176,10 @@ void subhoofer::getParameterName(VstInt32 index, char* text) {
 	switch (index) {
 	case kParamA: vst_strncpy(text, "Sub Amt", kVstMaxParamStrLen); break;
 	case kParamB: vst_strncpy(text, "SubGain", kVstMaxParamStrLen); break;
-	case kParamC: vst_strncpy(text, "LowGain", kVstMaxParamStrLen); break;
+	case kParamC: vst_strncpy(text, "MidPush", kVstMaxParamStrLen); break;
 	case kParamD: vst_strncpy(text, "Lowpass", kVstMaxParamStrLen); break;
 	//	case kParamE: vst_strncpy(text, "TrebFrq", kVstMaxParamStrLen); break;
-	case kParamF: vst_strncpy(text, "SplitFrq", kVstMaxParamStrLen); break;
+	case kParamF: vst_strncpy(text, "MidFreq", kVstMaxParamStrLen); break;
 	//case kParamG: vst_strncpy(text, "Hipass", kVstMaxParamStrLen); break;
 	case kParamH: vst_strncpy(text, "OutGain", kVstMaxParamStrLen); break;
 	default: break; // unknown parameter, shouldn't happen!
@@ -189,8 +189,9 @@ void subhoofer::getParameterName(VstInt32 index, char* text) {
 void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 	switch (index) {
 	//case kParamA: float2string((A), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
-	case kParamA: float2string((A), text, 0); break; //Sub Amt 0-1
-	case kParamB: float2string((B * 12 ), text, kVstMaxParamStrLen); break; //SubGain -12 to 12
+	//case kParamA: float2string(((((A) * 0.1) + 0.02) / overallscale), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
+	case kParamA: float2string(A, text, kVstMaxParamStrLen); break; //Sub Amt 0-1
+	case kParamB: float2string((B * 6.0 ), text, kVstMaxParamStrLen); break; //SubGain -12 to 12
 	case kParamC: float2string((C * 12.0) - 6.0, text, kVstMaxParamStrLen); break; // LowGain -6 to 6
 	//case kParamD: float2string((4 * D * D), text, kVstMaxParamStrLen); break;
 	case kParamD: float2string(D, text, 0); break;
@@ -204,9 +205,9 @@ void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 
 void subhoofer::getParameterLabel(VstInt32 index, char* text) {
 	switch (index) {
-	case kParamA: vst_strncpy(text, "hoof", kVstMaxParamStrLen); break;
+	case kParamA: vst_strncpy(text, "", kVstMaxParamStrLen); break;
 	case kParamB: vst_strncpy(text, "dB", 3); break;
-	case kParamC: vst_strncpy(text, "dB", 3); break;
+	case kParamC: vst_strncpy(text, "", 3); break;
 	case kParamD: vst_strncpy(text, "", 0); break;
 	//	case kParamE: vst_strncpy(text, "Khz", kVstMaxParamStrLen); break;
 	case kParamF: vst_strncpy(text, "hz", kVstMaxParamStrLen); break;

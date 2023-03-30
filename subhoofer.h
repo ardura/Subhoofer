@@ -65,9 +65,6 @@ private:
 	//default stuff
 
 
-	// Samplerate
-	double overallscale = 0.0;
-
 	double lastSampleL;
 	double last2SampleL;
 	double lastSampleR;
@@ -159,14 +156,41 @@ private:
 	double iirSampleX;
 	double iirSampleY;
 	double iirSampleZ;
+
+	double iirSampleJA;
+	double iirSampleJB;
+	double iirSampleJC;
+	double iirSampleJD;
+	double iirSampleJE;
+	double iirSampleJF;
+	double iirSampleJG;
+	double iirSampleJH;
+	double iirSampleJI;
+	double iirSampleJJ;
+	double iirSampleJK;
+	double iirSampleJL;
+	double iirSampleJM;
+	double iirSampleJN;
+	double iirSampleJO;
+	double iirSampleJP;
+	double iirSampleJQ;
+	double iirSampleJR;
+	double iirSampleJS;
+	double iirSampleJT;
+	double iirSampleJU;
+	double iirSampleJV;
+	double iirSampleJW;
+	double iirSampleJX;
+	double iirSampleJY;
+	double iirSampleJZ;
 	
 	double iirSubBumpA;
 	double iirSubBumpB;
 	double iirSubBumpC;
 
-	double HeadBump;
-	double SubBump;
-	double lp;
+	//double HeadBump = 0.0;
+	//double SubBump;
+	//double lp;
 	double oscGate;
 
 	double iirDriveSampleC;
@@ -177,6 +201,20 @@ private:
 	// Sub logic
 	bool WasNegative;
 	bool SubOctave;
+
+	// MID
+	double iirMidBumpLA;
+	double iirMidBumpLB;
+	double iirMidBumpLC;
+	double iirMidBumpRA;
+	double iirMidBumpRB;
+	double iirMidBumpRC;
+	double MidBumpL;
+	double MidBumpR;
+	double MidSampleA;
+	double MidSampleB;
+	double MidSampleC;
+	double MidSampleD;
 
 	// Counter
 	int bflip;
@@ -191,7 +229,8 @@ private:
 	//float G;
 	float H;
 
-	
+	double randD;
+	double invrandD;
 	
 
 };

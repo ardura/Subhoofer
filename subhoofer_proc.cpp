@@ -6,6 +6,8 @@
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
+#include <windows.h>
+#include <debugapi.h>
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -14,30 +16,52 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	float* out1 = outputs[0];
 	float* out2 = outputs[1];
 
-	overallscale = getSampleRate();
+	double overallscale = 1.0;
+	overallscale /= 44100.0;
+	overallscale *= getSampleRate();
 
 	double clamp = 0.0;
 
 	// Samples to hold input and EQ changes
-	double inputSampleL;
-	double inputSampleR;
-
 	double midSampleL = 0.0;
 	double bassSampleL = 0.0;
 
 	double midSampleR = 0.0;
 	double bassSampleR = 0.0;
 
-	// Sub freq knob
-	double HeadBumpFreq  = (((A) * 0.1) + 0.02) / overallscale;
+	// Sub Voicing knob
+	double HeadBump = 0.0;
+	double HeadBumpFreq = (((A) * 0.1) + 0.02) / overallscale;
+
+	// Sub Amt knob
+	//double BassGain = C * 0.1;
+	double BassGain = 0.7;
+
+	//double HeadBumpFreq = (((A * A * 380.0) + 20.0)) / overallscale;
 	double iirAmount = HeadBumpFreq  / 44.1;
 
 	// Sub Gain knob
-	double SubOutGain = B*12;
+	double SubOutGain = B*6;
+	double SubBump = 0.0;
 
-	// Low Gain knob
+	// Mid Push knob
 	double lowGain = (C * 24.0) - 12.0;
 	//double lowGain = pow(10.0, ((C * 12) - 6) / 20.0);
+	// Mid Freq Knob
+	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
+	iirMidBumpLA = 0.0;
+	iirMidBumpLB = 0.0;
+	iirMidBumpLC = 0.0;
+	iirMidBumpRA = 0.0;
+	iirMidBumpRB = 0.0;
+	iirMidBumpRC = 0.0;
+	MidBumpL = 0.0;
+	MidBumpR = 0.0;
+	MidSampleA = 0.0;
+	MidSampleB = 0.0;
+	MidSampleC = 0.0;
+	MidSampleD = 0.0;
+	iirAmountB = iirAmountB / 44.1;
 
 
 	bool engageEQ = true;
@@ -49,20 +73,13 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	//minus one gives nearly -1 to ? (should top out at 1)
 	//calibrate so that X db roughly equals X db with maximum topping out at 1 internally
 
-	// Fixing triplet without breaking lowGain variable
-	//double tripletIntensity = -lowGain;
-	double tripletIntensity = -lowGain;
-
 	// Lowpass knob
+	double lp;
 	double iirAmountC = (4 * D * D);
 	if (iirAmountC > 1.0) iirAmountC = 1.0;
 	bool engageLowpass = false;
 	if ((D * D * 4) < 4) engageLowpass = true;
-
-	// Splitfrq Knob
-	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
-
-
+	
 	double bridgerectifier;
 
 	double outC = fabs(lowGain);
@@ -71,21 +88,28 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 	while (--sampleFrames >= 0)
 	{
-		inputSampleL = *in1;
-		inputSampleR = *in2;
-
-		double rand = (double(fpdL) / UINT32_MAX);
-		double invrand = (1 - rand);
+		double inputSampleL = *in1;
+		double inputSampleR = *in2;
 
 		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
+
+
+		randD = (double(fpdL) / UINT32_MAX);
+		invrandD = (1 - randD);
+		randD /= 2.0;
+
+
+
+		//////////////////////////////////////////////////
+		// Sub calculation code
+		//////////////////////////////////////////////////
+
 		// Calculate the lowpass to be used
-		lp = (inputSampleL * inputSampleR) / 2.0;
-		iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq);
-		lp = iirDriveSampleA;
-		iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq);
-		lp = iirDriveSampleB;
+		lp = (inputSampleL + inputSampleR) / 2.0;
+		iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleA;
+		iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleB;
 
 		// Gate from airwindows
 		oscGate += fabs(lp * 10.0);
@@ -97,310 +121,249 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		clamp *= 0.00001;
 		//set up the thing to choke off oscillations- belt and suspenders affair
 
-		last2SampleL = lastSampleL;
-		lastSampleL = inputSampleL;
 
-		last2SampleR = lastSampleR;
-		lastSampleR = inputSampleR;
+		if (lp > 0)
+		{
+			//OutputDebugStringW(L"lp is positive.\n");
 
-		flip = !flip;
-		flipthree++;
-		if (flipthree < 1 || flipthree > 3) flipthree = 1;
-		//counters
+			if (WasNegative)
+			{
+				SubOctave = !SubOctave;
+			}
+			WasNegative = false;
+		}
+		else
+		{
+			//OutputDebugStringW(L"lp is negative OH MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA.\n");
+			WasNegative = true;
+		}
 
-		//begin EQ
+
+		// This calculates a low pass, then different samples from it and substracts from the low pass even more
+		iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleA;
+		iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleB;
+		iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleC;
+		iirSampleD = (iirSampleD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleD;
+		iirSampleE = (iirSampleE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleE;
+		iirSampleF = (iirSampleF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleF;
+		iirSampleG = (iirSampleG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleG;
+		iirSampleH = (iirSampleH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleH;
+		iirSampleI = (iirSampleI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleI;
+		iirSampleJ = (iirSampleJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJ;
+		iirSampleK = (iirSampleK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleK;
+		iirSampleL = (iirSampleL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleL;
+		iirSampleM = (iirSampleM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleM;
+		iirSampleN = (iirSampleN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleN;
+		iirSampleO = (iirSampleO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleO;
+		iirSampleP = (iirSampleP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleP;
+		iirSampleQ = (iirSampleQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleQ;
+		iirSampleR = (iirSampleR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleR;
+		iirSampleS = (iirSampleS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleS;
+		iirSampleT = (iirSampleT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleT;
+		iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleU;
+		iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleV;
+
+		iirSampleJA = (iirSampleJA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJA;
+		iirSampleJB = (iirSampleJB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJB;
+		iirSampleJC = (iirSampleJC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJC;
+		iirSampleJD = (iirSampleJD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJD;
+		iirSampleJE = (iirSampleJE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJE;
+		iirSampleJF = (iirSampleJF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJF;
+		iirSampleJG = (iirSampleJG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJG;
+		iirSampleJH = (iirSampleJH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJH;
+		iirSampleJI = (iirSampleJI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJI;
+		iirSampleJJ = (iirSampleJJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJJ;
+		iirSampleJK = (iirSampleJK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJK;
+		iirSampleJL = (iirSampleJL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJL;
+		iirSampleJM = (iirSampleJM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJM;
+		iirSampleJN = (iirSampleJN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJN;
+		iirSampleJO = (iirSampleJO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJO;
+		iirSampleJP = (iirSampleJP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJP;
+		iirSampleJQ = (iirSampleJQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJQ;
+		iirSampleJR = (iirSampleJR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJR;
+		iirSampleJS = (iirSampleJS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJS;
+		iirSampleJT = (iirSampleJT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJT;
+		iirSampleJU = (iirSampleJU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJU;
+		iirSampleJV = (iirSampleJV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJV;
+
+
+		switch (bflip)
+		{
+		case 1:
+			iirHeadBumpA += (lp * BassGain);
+			iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
+			iirHeadBumpA = (invrandD * iirHeadBumpA) + (randD * iirHeadBumpB) + (randD * iirHeadBumpC);
+			if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
+			if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
+			HeadBump = iirHeadBumpA;
+			break;
+		case 2:
+			iirHeadBumpB += (lp * BassGain);
+			iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
+			iirHeadBumpB = (randD * iirHeadBumpA) + (invrandD * iirHeadBumpB) + (randD * iirHeadBumpC);
+			if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
+			if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
+			HeadBump = iirHeadBumpB;
+			break;
+		case 3:
+			iirHeadBumpC += (lp * BassGain);
+			iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
+			iirHeadBumpC = (randD * iirHeadBumpA) + (randD * iirHeadBumpB) + (invrandD * iirHeadBumpC);
+			if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
+			if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
+			HeadBump = iirHeadBumpC;
+			break;
+		}
+
+		//HeadBump = (lp * HeadBumpFreq);
+
+		// Calculate drive samples based off what we've done so far		
+		iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleW;
+		iirSampleX = (iirSampleX * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleX;
+
+		// Create SubBump sample from our head bump to modify further
+		SubBump = HeadBump;
+		iirSampleY = (iirSampleY * (1.0 - iirAmount)) + (SubBump * iirAmount);			SubBump -= iirSampleY;
+
+		// Calculate sub drive samples based off what we've done so far		
+		iirDriveSampleC = (iirDriveSampleC * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleC;
+		iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleD;
+
+		SubBump = fabs(SubBump);
+		if (SubOctave == false) { SubBump = -SubBump; }
+
+		// Note the rand is what is flipping from positive to negative here
+		// This means bflip = 1 A gets inverted
+		// This means bflip = 2 B gets inverted
+		// This means bflip = 3 C gets inverted
+		// This creates a lower octave using math jank on the multiplication depending on sample
+		switch (bflip)
+		{
+		case 1:
+			iirSubBumpA += SubBump;// * BassGain);
+			iirSubBumpA -= (iirSubBumpA * iirSubBumpA * iirSubBumpA * HeadBumpFreq);
+			iirSubBumpA = (invrandD * iirSubBumpA) + (randD * iirSubBumpB) + (randD * iirSubBumpC);
+			if (iirSubBumpA > 0) iirSubBumpA -= clamp;
+			if (iirSubBumpA < 0) iirSubBumpA += clamp;
+			SubBump = iirSubBumpA;
+			break;
+		case 2:
+			iirSubBumpB += SubBump;// * BassGain);
+			iirSubBumpB -= (iirSubBumpB * iirSubBumpB * iirSubBumpB * HeadBumpFreq);
+			iirSubBumpB = (randD * iirSubBumpA) + (invrandD * iirSubBumpB) + (randD * iirSubBumpC);
+			if (iirSubBumpB > 0) iirSubBumpB -= clamp;
+			if (iirSubBumpB < 0) iirSubBumpB += clamp;
+			SubBump = iirSubBumpB;
+			break;
+		case 3:
+			iirSubBumpC += SubBump;// * BassGain);
+			iirSubBumpC -= (iirSubBumpC * iirSubBumpC * iirSubBumpC * HeadBumpFreq);
+			iirSubBumpC = (randD * iirSubBumpA) + (randD * iirSubBumpB) + (invrandD * iirSubBumpC);
+			if (iirSubBumpC > 0) iirSubBumpC -= clamp;
+			if (iirSubBumpC < 0) iirSubBumpC += clamp;
+			SubBump = iirSubBumpC;
+			break;
+		}
+
+		// Resample to reduce the sub bump further
+		iirSampleZ = (iirSampleZ * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq); 			SubBump = iirSampleZ;
+		iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleE;
+		iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleF;
+
+
+		// Sub gain only
+		inputSampleL += (SubBump * SubOutGain);
+		inputSampleR += (SubBump * SubOutGain);
+
+		//inputSampleL += (HeadBump * BassOutGain);
+		//inputSampleR += (HeadBump * BassOutGain);
+
+
+		//////////////////////////////////////////////////
+		//////////////////////////////////////////////////
+		//////////////////////////////////////////////////
+
+
+
+
+	//////////////////////////////////////////////////////
+	//	MID CODE
+	//////////////////////////////////////////////////////
+
 		if (engageEQ)
 		{
-			switch (flipthree)
-			{
-				case 1:
-					tripletFactorL = last2SampleL - inputSampleL;
-					tripletLA += tripletFactorL;
-					tripletLC -= tripletFactorL;
-					tripletFactorL = tripletLA;
-					iirLowSampleLC = (iirLowSampleLC * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-					bassSampleL = iirLowSampleLC;
-
-					tripletFactorR = last2SampleR - inputSampleR;
-					tripletRA += tripletFactorR;
-					tripletRC -= tripletFactorR;
-					tripletFactorR = tripletRA;
-					iirLowSampleRC = (iirLowSampleRC * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-					bassSampleR = iirLowSampleRC;
-					break;
-				case 2:
-					tripletFactorL = last2SampleL - inputSampleL;
-					tripletLB += tripletFactorL;
-					tripletLA -= tripletFactorL;
-					tripletFactorL = tripletLB;
-					iirLowSampleLD = (iirLowSampleLD * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-					bassSampleL = iirLowSampleLD;
-
-					tripletFactorR = last2SampleR - inputSampleR;
-					tripletRB += tripletFactorR;
-					tripletRA -= tripletFactorR;
-					tripletFactorR = tripletRB;
-					iirLowSampleRD = (iirLowSampleRD * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-					bassSampleR = iirLowSampleRD;
-					break;
-				case 3:
-					tripletFactorL = last2SampleL - inputSampleL;
-					tripletLC += tripletFactorL;
-					tripletLB -= tripletFactorL;
-					tripletFactorL = tripletLC;
-					iirLowSampleLE = (iirLowSampleLE * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-					bassSampleL = iirLowSampleLE;
-
-					tripletFactorR = last2SampleR - inputSampleR;
-					tripletRC += tripletFactorR;
-					tripletRB -= tripletFactorR;
-					tripletFactorR = tripletRC;
-					iirLowSampleRE = (iirLowSampleRE * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-					bassSampleR = iirLowSampleRE;
-					break;
-			}
-			tripletLA /= 2.0;
-			tripletLB /= 2.0;
-			tripletLC /= 2.0;
-
-			tripletRA /= 2.0;
-			tripletRB /= 2.0;
-			tripletRC /= 2.0;
-
-			if (flip)
-			{
-				iirLowSampleLA = (iirLowSampleLA * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLA;
-
-				iirLowSampleRA = (iirLowSampleRA * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRA;
-			}
-			else
-			{
-				iirLowSampleLB = (iirLowSampleLB * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLB;
-
-				iirLowSampleRB = (iirLowSampleRB * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRB;
-			}
-
-			iirLowSampleL = (iirLowSampleL * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-			bassSampleL = iirLowSampleL;
-
-			iirLowSampleR = (iirLowSampleR * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-			bassSampleR = iirLowSampleR;
-
-			// Needed to change this to only be for bass
-			midSampleL = (inputSampleL - bassSampleL);
-			midSampleR = (inputSampleR - bassSampleR);
-
-			//drive section
-			bassSampleL *= (lowGain + 1.0);
-			bridgerectifier = fabs(bassSampleL) * 1.57079633;
-			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
-			//max value for sine function
-			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
-			else bridgerectifier = 1 - cos(bridgerectifier);
-			//produce either boosted or starved version
-			if (bassSampleL > 0) bassSampleL = (bassSampleL * (1 - outC)) + (bridgerectifier * outC);
-			else bassSampleL = (bassSampleL * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to lowGain control
-
-			bassSampleR *= (lowGain + 1.0);
-			bridgerectifier = fabs(bassSampleR) * 1.57079633;
-			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
-			//max value for sine function
-			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
-			else bridgerectifier = 1 - cos(bridgerectifier);
-			//produce either boosted or starved version
-			if (bassSampleR > 0) bassSampleR = (bassSampleR * (1 - outC)) + (bridgerectifier * outC);
-			else bassSampleR = (bassSampleR * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to lowGain control
-
-			// Summing outputs
-			inputSampleL = midSampleL;
-			inputSampleL += bassSampleL;
-
-			inputSampleR = midSampleR;
-			inputSampleR += bassSampleR;
-
-			// END EQ
-
-			//////////////////////////////////////////////////
-			// Sub calculation code
-			//////////////////////////////////////////////////
-
-			if (lp > 0)
-			{
-				if (WasNegative)
-				{
-					SubOctave = !SubOctave;
-				}
-				WasNegative = false;
-			}
-			else
-			{
-				WasNegative = true;
-			}
-
-			/*
-			// This calculates a low pass, then different samples from it and substracts from the low pass even more
-			iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleA;
-			iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleB;
-			iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleC;
-			iirSampleD = (iirSampleD * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleD;
-			iirSampleE = (iirSampleE * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleE;
-			iirSampleF = (iirSampleF * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleF;
-			iirSampleG = (iirSampleG * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleG;
-			iirSampleH = (iirSampleH * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleH;
-			iirSampleI = (iirSampleI * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleI;
-			iirSampleJ = (iirSampleJ * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleJ;
-			iirSampleK = (iirSampleK * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleK;
-			iirSampleL = (iirSampleL * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleL;
-			iirSampleM = (iirSampleM * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleM;
-			iirSampleN = (iirSampleN * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleN;
-			iirSampleO = (iirSampleO * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleO;
-			iirSampleP = (iirSampleP * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleP;
-			iirSampleQ = (iirSampleQ * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleQ;
-			iirSampleR = (iirSampleR * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleR;
-			iirSampleS = (iirSampleS * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleS;
-			iirSampleT = (iirSampleT * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleT;
-			iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleU;
-			iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);
-			lp -= iirSampleV;
-			
-
 			switch (bflip)
 			{
-				case 1:
-					iirHeadBumpA += (lp);
-					iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
-					iirHeadBumpA = (invrand * iirHeadBumpA) + (rand * iirHeadBumpB) + (rand * iirHeadBumpC);
-					if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
-					if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
-					HeadBump = iirHeadBumpA;
-					break;
-				case 2:
-					iirHeadBumpB += (lp);
-					iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
-					iirHeadBumpB = (rand * iirHeadBumpA) + (invrand * iirHeadBumpB) + (rand * iirHeadBumpC);
-					if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
-					if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
-					HeadBump = iirHeadBumpB;
-					break;
-				case 3:
-					iirHeadBumpC += (lp);
-					iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
-					iirHeadBumpC = (rand * iirHeadBumpA) + (rand * iirHeadBumpB) + (invrand * iirHeadBumpC);
-					if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
-					if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
-					HeadBump = iirHeadBumpC;
-					break;
+			case 1:
+				iirMidBumpLA += (inputSampleL);
+				iirMidBumpLA -= (iirMidBumpLA * iirMidBumpLA * iirMidBumpLA * iirAmountB);
+				iirMidBumpLA = (invrandD * iirMidBumpLA) + (randD * iirMidBumpLB) + (randD * iirMidBumpLC);
+				if (iirMidBumpLA > 0) iirMidBumpLA -= clamp;
+				if (iirMidBumpLA < 0) iirMidBumpLA += clamp;
+				MidBumpL = iirMidBumpLA;
+
+				iirMidBumpRA += (inputSampleR);
+				iirMidBumpRA -= (iirMidBumpRA * iirMidBumpRA * iirMidBumpRA * iirAmountB);
+				iirMidBumpRA = (invrandD * iirMidBumpRA) + (randD * iirMidBumpRB) + (randD * iirMidBumpRC);
+				if (iirMidBumpRA > 0) iirMidBumpRA -= clamp;
+				if (iirMidBumpRA < 0) iirMidBumpRA += clamp;
+				MidBumpR = iirMidBumpRA;
+				break;
+			case 2:
+				iirMidBumpLB += (inputSampleL);
+				iirMidBumpLB -= (iirMidBumpLB * iirMidBumpLB * iirMidBumpLB * iirAmountB);
+				iirMidBumpLB = (randD * iirMidBumpLA) + (invrandD * iirMidBumpLB) + (randD * iirMidBumpLC);
+				if (iirMidBumpLB > 0) iirMidBumpLB -= clamp;
+				if (iirMidBumpLB < 0) iirMidBumpLB += clamp;
+				MidBumpL = iirMidBumpLB;
+
+				iirMidBumpRB += (inputSampleR);
+				iirMidBumpRB -= (iirMidBumpRB * iirMidBumpRB * iirMidBumpRB * iirAmountB);
+				iirMidBumpRB = (randD * iirMidBumpRA) + (invrandD * iirMidBumpRB) + (randD * iirMidBumpRC);
+				if (iirMidBumpRB > 0) iirMidBumpRB -= clamp;
+				if (iirMidBumpRB < 0) iirMidBumpRB += clamp;
+				MidBumpR = iirMidBumpLB;
+				break;
+			case 3:
+				iirMidBumpLC += (inputSampleL);
+				iirMidBumpLC -= (iirMidBumpLC * iirMidBumpLC * iirMidBumpLC * iirAmountB);
+				iirMidBumpLC = (randD * iirMidBumpLA) + (randD * iirMidBumpLB) + (invrandD * iirMidBumpLC);
+				if (iirMidBumpLC > 0) iirMidBumpLC -= clamp;
+				if (iirMidBumpLC < 0) iirMidBumpLC += clamp;
+				MidBumpL = iirMidBumpLC;
+
+				iirMidBumpRC += (inputSampleR);
+				iirMidBumpRC -= (iirMidBumpRC * iirMidBumpRC * iirMidBumpRC * iirAmountB);
+				iirMidBumpRC = (randD * iirMidBumpRA) + (randD * iirMidBumpRB) + (invrandD * iirMidBumpRC);
+				if (iirMidBumpRC > 0) iirMidBumpRC -= clamp;
+				if (iirMidBumpRC < 0) iirMidBumpRC += clamp;
+				MidBumpR = iirMidBumpRC;
+				break;
 			}
-			*/
-			HeadBump = lp;
+
+			//HeadBump = (lp * HeadBumpFreq);
 
 			// Calculate drive samples based off what we've done so far		
-			iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 
-			HeadBump -= iirSampleW;
-			iirSampleX = (iirSampleX * (1.0 - iirAmount)) + (HeadBump * iirAmount); 
-			HeadBump -= iirSampleX;
+			MidSampleA = (MidSampleA * (1.0 - iirAmountB)) + (MidBumpL * iirAmountB); 			MidBumpL -= MidSampleA;
+			MidSampleB = (MidSampleB * (1.0 - iirAmountB)) + (MidBumpL * iirAmountB); 			MidBumpL -= MidSampleB;
 
-			// Create SubBump sample from our head bump to modify further
-			SubBump = HeadBump;
-			iirSampleY = (iirSampleY * (1.0 - iirAmount)) + (SubBump * iirAmount);
-			SubBump -= iirSampleY;
-
-			// Calculate sub drive samples based off what we've done so far		
-			iirDriveSampleC = (iirDriveSampleC * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);
-			SubBump = iirDriveSampleC;
-			iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);
-			SubBump = iirDriveSampleD;
-
-			rand = (double(fpdL) / UINT32_MAX);
-			invrand = (1 - rand);
-			rand /= 2.0;
+			MidSampleC = (MidSampleC * (1.0 - iirAmountB)) + (MidBumpR * iirAmountB); 			MidBumpR -= MidSampleC;
+			MidSampleD = (MidSampleD * (1.0 - iirAmountB)) + (MidBumpR * iirAmountB); 			MidBumpR -= MidSampleD;
+			/// <summary>
+			/// ///////////////////////////////////////////////////////////////////////////
 
 
-			SubBump = fabs(SubBump);
-			if (SubOctave == false) { SubBump = -SubBump; }
 
-			// Note the rand is what is flipping from positive to negative here
-			// This means bflip = 1 A gets inverted
-			// This means bflip = 2 B gets inverted
-			// This means bflip = 3 C gets inverted
-			// This creates a lower octave using math jank on the multiplication depending on sample
-			switch (bflip)
-			{
-				case 1:
-					iirSubBumpA += SubBump;// * BassGain);
-					iirSubBumpA -= (iirSubBumpA * iirSubBumpA * iirSubBumpA * HeadBumpFreq);
-					iirSubBumpA = (invrand * iirSubBumpA) + (rand * iirSubBumpB) + (rand * iirSubBumpC);
-					if (iirSubBumpA > 0) iirSubBumpA -= clamp;
-					if (iirSubBumpA < 0) iirSubBumpA += clamp;
-					SubBump = iirSubBumpA;
-					break;
-				case 2:
-					iirSubBumpB += SubBump;// * BassGain);
-					iirSubBumpB -= (iirSubBumpB * iirSubBumpB * iirSubBumpB * HeadBumpFreq);
-					iirSubBumpB = (rand * iirSubBumpA) + (invrand * iirSubBumpB) + (rand * iirSubBumpC);
-					if (iirSubBumpB > 0) iirSubBumpB -= clamp;
-					if (iirSubBumpB < 0) iirSubBumpB += clamp;
-					SubBump = iirSubBumpB;
-					break;
-				case 3:
-					iirSubBumpC += SubBump;// * BassGain);
-					iirSubBumpC -= (iirSubBumpC * iirSubBumpC * iirSubBumpC * HeadBumpFreq);
-					iirSubBumpC = (rand * iirSubBumpA) + (rand * iirSubBumpB) + (invrand * iirSubBumpC);
-					if (iirSubBumpC > 0) iirSubBumpC -= clamp;
-					if (iirSubBumpC < 0) iirSubBumpC += clamp;
-					SubBump = iirSubBumpC;
-					break;
-			}
+			inputSampleL += (MidBumpL * lowGain);
+			inputSampleR += (MidBumpR * lowGain);
 
-			// Resample to reduce the sub bump further
-			iirSampleZ = (iirSampleZ * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq); 
-			SubBump = iirSampleZ;
-			iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 
-			SubBump = iirDriveSampleE;
-			iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 
-			SubBump = iirDriveSampleF;
-
-
-			// Sub gain only
-			inputSampleL += (SubBump * SubOutGain);
-			inputSampleR += (SubBump * SubOutGain);
-
-			//inputSampleL += (HeadBump * BassOutGain);
-			//inputSampleR += (HeadBump * BassOutGain);
-
-
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
-
+			//////////////////////////////////////////////
+			// END MID
+			////////////////////////////////////////////
 		}
+
+
+
 
 		//	Lowpass is after all processing like the compressor that might produce hash
 		if (engageLowpass)
@@ -436,7 +399,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 				inputSampleR = lowpassSampleRBB;
 				lowpassSampleRCB = (lowpassSampleRCB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
 				inputSampleR = lowpassSampleRCB;
-				
+
 			}
 			lowpassSampleLG = (lowpassSampleLG * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
 			lowpassSampleRG = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
@@ -445,7 +408,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
 		}
 
-		 
+
 		//built in output trim and dry/wet if desired
 		if (outputgain != 1.0) {
 			inputSampleL *= outputgain;
@@ -457,7 +420,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		if (bflip < 1 || bflip > 3) bflip = 1;
 
 		//begin 32 bit stereo floating point dither
-		int expon; 
+		int expon;
 		frexpf((float)inputSampleL, &expon);
 		fpdL ^= fpdL << 13; fpdL ^= fpdL >> 17; fpdL ^= fpdL << 5;
 		inputSampleL += ((double(fpdL) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
@@ -476,319 +439,5 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	}
 }
 
-/*
-void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames)
-{
-	double* in1 = inputs[0];
-	double* in2 = inputs[1];
-	double* out1 = outputs[0];
-	double* out2 = outputs[1];
 
-	double overallscale = 1.0;
-	overallscale /= 44100.0;
-	double compscale = overallscale;
-	overallscale = getSampleRate();
-	compscale = compscale * overallscale;
-	//compscale is the one that's 1 or something like 2.2 for 96K rates
-
-	double inputSampleL;
-	double inputSampleR;
-
-	double midSampleL = 0.0;
-	double bassSampleL = 0.0;
-
-	double midSampleR = 0.0;
-	double bassSampleR = 0.0;
-
-	// Added by Ardura
-	double iirHeadBumpA = 0.0;
-	double HeadBumpFreq  = ((A * 0.1) + 0.02) / overallscale;
-	double clamp = 0.0;
-
-	double lowGain = (C * 24.0) - 12.0;
-	bool engageEQ = true;
-	if (0.0 == lowGain) engageEQ = false;
-
-	lowGain = pow(10.0, lowGain / 20.0) - 1.0;
-	//convert to 0 to X multiplier with 1.0 being O db
-	//minus one gives nearly -1 to ? (should top out at 1)
-	//calibrate so that X db roughly equals X db with maximum topping out at 1 internally
-
-	double tripletIntensity = -lowGain;
-
-	double iirAmountB = (((F * F * 770.0) + 30.0) * 10) / overallscale;
-	//bypass the highpass and lowpass if set to extremes
-	double bridgerectifier;
-
-	//double iirAmountC = (((D * D * 15.0) + 1.0) * 0.0188) + 0.7;
-	//Increased iirAmountC to see if that makes a steeper filter
-	double iirAmountC = (((D * D * 19.0) + 1.0) * 0.02) + 0.3;
-	if (iirAmountC > 1.0) iirAmountC = 1.0;
-	bool engageLowpass = false;
-	if (((D * D * 19.0) + 1.0) < 19.99) engageLowpass = true;
-
-	double outC = fabs(lowGain);
-	//end EQ
-	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
-
-	while (--sampleFrames >= 0)
-	{
-		inputSampleL = *in1;
-		inputSampleR = *in2;
-		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
-		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
-
-		last2SampleL = lastSampleL;
-		lastSampleL = inputSampleL;
-
-		last2SampleR = lastSampleR;
-		lastSampleR = inputSampleR;
-
-		flip = !flip;
-		flipthree++;
-		if (flipthree < 1 || flipthree > 3) flipthree = 1;
-		//counters
-
-		//begin EQ
-		if (engageEQ)
-		{
-			switch (flipthree)
-			{
-			case 1:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLA += tripletFactorL;
-				tripletLC -= tripletFactorL;
-				tripletFactorL = tripletLA * tripletIntensity;
-				bassSampleL = iirLowSampleLC;
-
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRA += tripletFactorR;
-				tripletRC -= tripletFactorR;
-				tripletFactorR = tripletRA * tripletIntensity;
-				bassSampleR = iirLowSampleRC;
-				break;
-			case 2:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLB += tripletFactorL;
-				tripletLA -= tripletFactorL;
-				tripletFactorL = tripletLB * tripletIntensity;
-				iirLowSampleLD = (iirLowSampleLD * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLD;
-
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRB += tripletFactorR;
-				tripletRA -= tripletFactorR;
-				tripletFactorR = tripletRB * tripletIntensity;
-
-				iirLowSampleRD = (iirLowSampleRD * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRD;
-				break;
-			case 3:
-				tripletFactorL = last2SampleL - inputSampleL;
-				tripletLC += tripletFactorL;
-				tripletLB -= tripletFactorL;
-				tripletFactorL = tripletLC * tripletIntensity;
-
-				iirLowSampleLE = (iirLowSampleLE * (1.0 - iirAmountB)) + (inputSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLE;
-
-				tripletFactorR = last2SampleR - inputSampleR;
-				tripletRC += tripletFactorR;
-				tripletRB -= tripletFactorR;
-				tripletFactorR = tripletRC * tripletIntensity;
-
-				iirLowSampleRE = (iirLowSampleRE * (1.0 - iirAmountB)) + (inputSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRE;
-				break;
-			}
-			tripletLA /= 2.0;
-			tripletLB /= 2.0;
-			tripletLC /= 2.0;
-
-			tripletRA /= 2.0;
-			tripletRB /= 2.0;
-			tripletRC /= 2.0;
-
-			if (flip)
-			{
-				iirLowSampleLA = (iirLowSampleLA * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLA;
-
-				iirLowSampleRA = (iirLowSampleRA * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRA;
-			}
-			else
-			{
-				iirLowSampleLB = (iirLowSampleLB * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-				bassSampleL = iirLowSampleLB;
-
-				iirLowSampleRB = (iirLowSampleRB * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-				bassSampleR = iirLowSampleRB;
-			}
-
-			iirLowSampleL = (iirLowSampleL * (1.0 - iirAmountB)) + (bassSampleL * iirAmountB);
-			bassSampleL = iirLowSampleL;
-
-			iirLowSampleR = (iirLowSampleR * (1.0 - iirAmountB)) + (bassSampleR * iirAmountB);
-			bassSampleR = iirLowSampleR;
-
-			// Needed to change this to only be for bass
-			midSampleL = (inputSampleL - bassSampleL);
-			midSampleR = (inputSampleR - bassSampleR);
-
-
-			//////////////////////////////////////////////////
-			// Sub calculation code
-			//////////////////////////////////////////////////
-
-			lp = (bassSampleL * bassSampleR) / 2;
-			oscGate += fabs(lp * 10.0);
-			oscGate -= 0.001;
-			if (oscGate > 1.0) oscGate = 1.0;
-			if (oscGate < 0) oscGate = 0;
-			//got a value that only goes down low when there's silence or near silence on input
-			clamp = 1.0 - oscGate;
-			clamp *= 0.00001;
-			//set up the thing to choke off oscillations- belt and suspenders affair
-
-			if (A != 0)
-			{
-				iirHeadBumpA += (lp)*lowGain;
-				subSample -= (subSample * subSample * subSample * HeadBumpFreq );
-
-				if (subSample > 0) subSample -= clamp;
-				if (subSample < 0) subSample += clamp;
-
-				//subSample *= subSample * A * 6;
-			}
-
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
-			//////////////////////////////////////////////////
-
-			//drive section
-			bassSampleL *= (lowGain + 1.0);
-			bridgerectifier = fabs(bassSampleL) * 1.57079633;
-
-			// Modified this to set bridgerectifier if undefined
-			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
-			//max value for sine function
-			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
-			else bridgerectifier = 1 - cos(bridgerectifier);
-			//produce either boosted or starved version
-			if (bassSampleL > 0) bassSampleL = (bassSampleL * (1 - outC)) + (bridgerectifier * outC);
-			else				 bassSampleL = (bassSampleL * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to lowGain control
-
-			bassSampleR *= (lowGain + 1.0);
-			bridgerectifier = fabs(bassSampleR) * 1.57079633;
-			if (bridgerectifier > 1.57079633) bridgerectifier = 1.57079633;
-			//max value for sine function
-			if (lowGain > 0) bridgerectifier = sin(bridgerectifier);
-			else bridgerectifier = 1 - cos(bridgerectifier);
-			//produce either boosted or starved version
-			if (bassSampleR > 0) bassSampleR = (bassSampleR * (1 - outC)) + (bridgerectifier * outC);
-			else				 bassSampleR = (bassSampleR * (1 - outC)) - (bridgerectifier * outC);
-			//blend according to lowGain control
-
-			// Summing outputs
-			inputSampleL = midSampleL;
-			inputSampleL += bassSampleL;
-
-			inputSampleR = midSampleR;
-			inputSampleR += bassSampleR;
-
-			if (subSample != 0.0)
-			{
-				inputSampleL += subSample;
-			}
-			if (subSample != 0.0)
-			{
-				inputSampleR += subSample;
-			}
-		}
-		//end EQ
-
-		//EQ lowpass is after all processing like the compressor that might produce hash
-		if (engageLowpass)
-		{
-			if (flip)
-			{
-				lowpassSampleLAA = (lowpassSampleLAA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLAA;
-				lowpassSampleLBA = (lowpassSampleLBA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLBA;
-				lowpassSampleLCA = (lowpassSampleLCA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLCA;
-				lowpassSampleLDA = (lowpassSampleLDA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLDA;
-				lowpassSampleLE = (lowpassSampleLE * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLE;
-
-				lowpassSampleRAA = (lowpassSampleRAA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRAA;
-				lowpassSampleRBA = (lowpassSampleRBA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRBA;
-				lowpassSampleRCA = (lowpassSampleRCA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRCA;
-				lowpassSampleRDA = (lowpassSampleRDA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRDA;
-				lowpassSampleRE = (lowpassSampleRE * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRE;
-			}
-			else
-			{
-				lowpassSampleLAB = (lowpassSampleLAB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLAB;
-				lowpassSampleLBB = (lowpassSampleLBB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLBB;
-				lowpassSampleLCB = (lowpassSampleLCB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLCB;
-				lowpassSampleLDB = (lowpassSampleLDB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLDB;
-				lowpassSampleLF = (lowpassSampleLF * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLF;
-
-				lowpassSampleRAB = (lowpassSampleRAB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRAB;
-				lowpassSampleRBB = (lowpassSampleRBB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRBB;
-				lowpassSampleRCB = (lowpassSampleRCB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRCB;
-				lowpassSampleRDB = (lowpassSampleRDB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRDB;
-				lowpassSampleRF = (lowpassSampleRF * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRF;
-			}
-			lowpassSampleLG = (lowpassSampleLG * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-			lowpassSampleRG = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-
-			inputSampleL = (lowpassSampleLG * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-			inputSampleR = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-		}
-
-		//built in output trim and dry/wet if desired
-		if (outputgain != 1.0) {
-			inputSampleL *= outputgain;
-			inputSampleR *= outputgain;
-		}
-
-		//begin 64 bit stereo floating point dither
-		//int expon; frexp((double)inputSampleL, &expon);
-		fpdL ^= fpdL << 13; fpdL ^= fpdL >> 17; fpdL ^= fpdL << 5;
-		//inputSampleL += ((double(fpdL)-uint32_t(0x7fffffff)) * 1.1e-44l * pow(2,expon+62));
-		//frexp((double)inputSampleR, &expon);
-		fpdR ^= fpdR << 13; fpdR ^= fpdR >> 17; fpdR ^= fpdR << 5;
-		//inputSampleR += ((double(fpdR)-uint32_t(0x7fffffff)) * 1.1e-44l * pow(2,expon+62));
-		//end 64 bit stereo floating point dither
-
-		*out1 = inputSampleL;
-		*out2 = inputSampleR;
-
-		*in1++;
-		*in2++;
-		*out1++;
-		*out2++;
-	}
-}
-*/
+//void subhoofer::processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames)
