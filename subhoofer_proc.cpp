@@ -1,107 +1,8 @@
-/* ========================================
- *  EQ - EQ.h
- *  Copyright (c) 2016 airwindows, Airwindows uses the MIT license
- * ======================================== */
-
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
 #include <windows.h>
 #include <debugapi.h>
-
-/*
-void subhoofer::calcBiQuad(float frequency, float gain, float filterQ)
-{
-	float amplitude;
-	float omega;
-	float cosine;
-	float sine;
-	float alpha;
-	float beta;
-
-	amplitude = pow(10, gain / 40.0f);
-	omega = (2 * 3.141592 * frequency) / overallscale;
-	sine = sin(omega);
-	cosine = cos(omega);
-	alpha = sine / (2.0 * filterQ);
-	beta = sqrt(amplitude + amplitude);
-
-
-	// Filter coefficient calculation
-	///////////////////////////////////////
-	
-	b0 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine + beta * sine);
-	b1 = 2 * amplitude * ((amplitude - 1) - (amplitude + 1) * cosine);
-	b2 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine - beta * sine);
-	a0 = (amplitude + 1) + (amplitude - 1) * cosine + beta * sine;
-	a1 = -2 * ((amplitude - 1) + (amplitude + 1) * cosine);
-	a2 = (amplitude + 1) + (amplitude - 1) * cosine - beta * sine;
-	/*
-	case BANDPASS:
-		b0 = alpha;
-		b1 = 0;
-		b2 = -alpha;
-		a0 = 1 + alpha;
-		a1 = -2 * cosine;
-		a2 = 1 - alpha;
-
-	case LOWPASS:
-		b0 = (1 - cosine) / 2;
-		b1 = 1 - cosine;
-		b2 = (1 - cosine) / 2;
-		a0 = 1 + alpha;
-		a1 = -2 * cosine;
-		a2 = 1 - alpha;
-
-	case HIGHPASS:
-		b0 = (1 + cosine) / 2;
-		b1 = -(1 + cosine);
-		b2 = (1 + cosine) / 2;
-		a0 = 1 + alpha;
-		a1 = -2 * cosine;
-		a2 = 1 - alpha;
-
-	case NOTCH:
-		b0 = 1;
-		b1 = -2 * cosine;
-		b2 = 1;
-		a0 = 1 + alpha;
-		a1 = -2 * cosine;
-		a2 = 1 - alpha;
-
-	case PEAK:
-		b0 = 1 + (alpha * amplitude);
-		b1 = -2 * cosine;
-		b2 = 1 - (alpha * amplitude);
-		a0 = 1 + (alpha / amplitude);
-		a1 = -2 * cosine;
-		a2 = 1 - (alpha / amplitude);
-
-	case LOWSHELF:
-		b0 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine + beta * sine);
-		b1 = 2 * amplitude * ((amplitude - 1) - (amplitude + 1) * cosine);
-		b2 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine - beta * sine);
-		a0 = (amplitude + 1) + (amplitude - 1) * cosine + beta * sine;
-		a1 = -2 * ((amplitude - 1) + (amplitude + 1) * cosine);
-		a2 = (amplitude + 1) + (amplitude - 1) * cosine - beta * sine;
-
-	case HIGHSHELF:
-		b0 = amplitude * ((amplitude + 1) + (amplitude - 1) * cosine + beta * sine);
-		b1 = -2 * amplitude * ((amplitude - 1) + (amplitude + 1) * cosine);
-		b2 = amplitude * ((amplitude + 1) + (amplitude - 1) * cosine - beta * sine);
-		a0 = (amplitude + 1) - (amplitude - 1) * cosine + beta * sine;
-		a1 = 2 * ((amplitude - 1) - (amplitude + 1) * cosine);
-		a2 = (amplitude + 1) - (amplitude - 1) * cosine - beta * sine;
-
-
-	//// prescale flter constants
-	//b0 /= a0;
-	//b1 /= a0;
-	//b2 /= a0;
-	//a1 /= a0;
-	//a2 /= a0;
-}
-*/
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -119,12 +20,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double clamp = 0.0;
 
 	// Samples to hold input and EQ changes
-	double midSampleL = 0.0;
 	double bassSampleL = 0.0;
-
-	double midSampleR = 0.0;
 	double bassSampleR = 0.0;
 
+	// Filtered Samples for calculation
 	double filteredR = 0.0;
 	double filteredRA = 0.0;
 	double filteredRAA = 0.0;
@@ -139,13 +38,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	// Sub Voicing knob
 	double HeadBump = 0.0;
 	double HeadBumpFreq = (((A) * 0.1) + 0.02) / overallscale;
+	double iirAmount = HeadBumpFreq / 44.1;
 
-	// Sub Amt knob
-	//double BassGain = C * 0.1;
+	// Sub hardcoded gain
 	double BassGain = 0.7;
-
-	//double HeadBumpFreq = (((A * A * 380.0) + 20.0)) / overallscale;
-	double iirAmount = HeadBumpFreq  / 44.1;
 
 	// Sub Gain knob
 	double SubOutGain = B*6;
@@ -153,67 +49,47 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 	// Bass Gain knob
 	double lowGain = (C * 12.0) - 6.0;
+	double outC = fabs(lowGain);
 	previousC = 0.0f;
 
 	// Bass Freq Knob
 	double iirAmountB = ((F * F * 770.0) + 30.0) / overallscale;
 	lastF = 0.0;
-	iirMidBumpLA = 0.0;
-	iirMidBumpLB = 0.0;
-	iirMidBumpLC = 0.0;
-	iirMidBumpRA = 0.0;
-	iirMidBumpRB = 0.0;
-	iirMidBumpRC = 0.0;
-	MidBumpL = 0.0;
-	MidBumpR = 0.0;
-	MidSampleA = 0.0;
-	MidSampleB = 0.0;
-	MidSampleC = 0.0;
-	MidSampleD = 0.0;
-	//iirAmountB = iirAmountB / 44.1;
 
-
+	// EQ Engaged (Bass Gain knob)
 	bool engageEQ = true;
 	if (0.0 == lowGain) engageEQ = false;
 
-		
-	//lowGain = pow(10.0, lowGain / 20.0) - 1.0;
-	//convert to 0 to X multiplier with 1.0 being O db
-	//minus one gives nearly -1 to ? (should top out at 1)
-	//calibrate so that X db roughly equals X db with maximum topping out at 1 internally
-
 	// Lowpass knob
 	double lp;
+	// 4*Frequency^2 Curve for lowpass freq slider
 	double iirAmountC = (4 * D * D);
+
+	// Normalize iirAmountC (shouldn't happen)
 	if (iirAmountC > 1.0) iirAmountC = 1.0;
+
+	// Should lowpass code run?
 	bool engageLowpass = false;
 	if ((D * D * 4) < 4) engageLowpass = true;
-	
-	double bridgerectifier;
 
-	double outC = fabs(lowGain);
-	//double outC = lowGain;
-
-
+	// Output Gain knob
 	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
 
 	while (--sampleFrames >= 0)
 	{
 		double inputSampleL = *in1;
 		double inputSampleR = *in2;
-		double drySampleL = inputSampleL;
-		double drySampleR = inputSampleR;
 
+		// Normalize high/low gains
 		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
-
-
+		// Used in the distortion of the gain
 		randD = (double(fpdL) / UINT32_MAX);
 		invrandD = (1 - randD);
 		randD /= 2.0;
 
-
+		// If Sub Gain or Subhoof
 		if ((A > 0) && (B > 0))
 		{
 			//////////////////////////////////////////////////
@@ -233,27 +109,25 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			//got a value that only goes down low when there's silence or near silence on input
 			clamp = 1.0 - oscGate;
 			clamp *= 0.00001;
-			//set up the thing to choke off oscillations- belt and suspenders affair
 
-
+			// Which side of the zero crossing are we on?
 			if (lp > 0)
 			{
-				//OutputDebugStringW(L"lp is positive.\n");
-
+				// We are on top!
 				if (WasNegative)
 				{
+					// Flip the SubOctave boolean
 					SubOctave = !SubOctave;
 				}
 				WasNegative = false;
 			}
 			else
 			{
-				//OutputDebugStringW(L"lp is negative OH MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA.\n");
+				// We are on bottom
 				WasNegative = true;
 			}
 
-
-			// This calculates a low pass, then different samples from it and substracts from the low pass even more
+			// This calculates a low pass, then different samples from it and subtracts from the low pass even more
 			iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleA;
 			iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleB;
 			iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleC;
@@ -303,33 +177,31 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			switch (bflip)
 			{
-			case 1:
-				iirHeadBumpA += (lp * BassGain);
-				iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
-				iirHeadBumpA = (invrandD * iirHeadBumpA) + (randD * iirHeadBumpB) + (randD * iirHeadBumpC);
-				if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
-				if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
-				HeadBump = iirHeadBumpA;
-				break;
-			case 2:
-				iirHeadBumpB += (lp * BassGain);
-				iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
-				iirHeadBumpB = (randD * iirHeadBumpA) + (invrandD * iirHeadBumpB) + (randD * iirHeadBumpC);
-				if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
-				if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
-				HeadBump = iirHeadBumpB;
-				break;
-			case 3:
-				iirHeadBumpC += (lp * BassGain);
-				iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
-				iirHeadBumpC = (randD * iirHeadBumpA) + (randD * iirHeadBumpB) + (invrandD * iirHeadBumpC);
-				if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
-				if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
-				HeadBump = iirHeadBumpC;
-				break;
+				case 1:
+					iirHeadBumpA += (lp * BassGain);
+					iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
+					iirHeadBumpA = (invrandD * iirHeadBumpA) + (randD * iirHeadBumpB) + (randD * iirHeadBumpC);
+					if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
+					if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
+					HeadBump = iirHeadBumpA;
+					break;
+				case 2:
+					iirHeadBumpB += (lp * BassGain);
+					iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
+					iirHeadBumpB = (randD * iirHeadBumpA) + (invrandD * iirHeadBumpB) + (randD * iirHeadBumpC);
+					if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
+					if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
+					HeadBump = iirHeadBumpB;
+					break;
+				case 3:
+					iirHeadBumpC += (lp * BassGain);
+					iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
+					iirHeadBumpC = (randD * iirHeadBumpA) + (randD * iirHeadBumpB) + (invrandD * iirHeadBumpC);
+					if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
+					if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
+					HeadBump = iirHeadBumpC;
+					break;
 			}
-
-			//HeadBump = (lp * HeadBumpFreq);
 
 			// Calculate drive samples based off what we've done so far		
 			iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleW;
@@ -344,9 +216,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleD;
 
 			SubBump = fabs(SubBump);
+			// Flip the bump sample per SubOctave true/false for the half-frequency
 			if (SubOctave == false) { SubBump = -SubBump; }
 
-			// Note the rand is what is flipping from positive to negative here
+			// Note the randD is what is flipping from positive to negative here
 			// This means bflip = 1 A gets inverted
 			// This means bflip = 2 B gets inverted
 			// This means bflip = 3 C gets inverted
@@ -384,20 +257,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleE;
 			iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleF;
 
-
 			// Sub gain only
 			inputSampleL += (SubBump * SubOutGain);
 			inputSampleR += (SubBump * SubOutGain);
-
-			//inputSampleL += (HeadBump * BassOutGain);
-			//inputSampleR += (HeadBump * BassOutGain);
 		}
-
-		//////////////////////////////////////////////////
-		//////////////////////////////////////////////////
-		//////////////////////////////////////////////////
-
-
 
 
 		//////////////////////////////////////////////
@@ -406,9 +269,11 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		// If gain applied
 		if (engageEQ)
 		{
+			// Normalize high/low values
 			if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 			if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
+			// Do this because airwindows does
 			inputSampleL = sin(inputSampleL);
 			inputSampleR = sin(inputSampleR);
 
@@ -432,6 +297,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 				lastF = F;
 			}
 
+			// Multiply things to get new filtered audio then subtract kDC_ADD (kDC_ADD = 1e-30f;)
 			filteredL = a0LP * inputSampleL - b1LP * filteredL + kDC_ADD;
 			filteredR = a0LP * inputSampleR - b1LP * filteredR + kDC_ADD;
 			filteredL -= kDC_ADD;
@@ -458,8 +324,6 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		//////////////////////////////////////////////
 		// END EQ
 		//////////////////////////////////////////////
-
-
 
 		//	Lowpass is after all processing like the compressor that might produce hash
 		if (engageLowpass)
