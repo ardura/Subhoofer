@@ -105,6 +105,8 @@ void subhoofer::calcBiQuad(float frequency, float gain, float filterQ)
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
+	kDC_ADD = 1e-30f;
+
 	float* in1 = inputs[0];
 	float* in2 = inputs[1];
 	float* out1 = outputs[0];
@@ -149,12 +151,13 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double SubOutGain = B*6;
 	double SubBump = 0.0;
 
-	// Bass Push knob
+	// Bass Gain knob
 	double lowGain = (C * 12.0) - 6.0;
+	previousC = 0.0f;
 
 	// Bass Freq Knob
 	double iirAmountB = ((F * F * 770.0) + 30.0) / overallscale;
-	float lastF = 0.0;
+	lastF = 0.0;
 	iirMidBumpLA = 0.0;
 	iirMidBumpLB = 0.0;
 	iirMidBumpLC = 0.0;
@@ -198,6 +201,8 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	{
 		double inputSampleL = *in1;
 		double inputSampleR = *in2;
+		double drySampleL = inputSampleL;
+		double drySampleR = inputSampleR;
 
 		if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 		if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
@@ -209,183 +214,184 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		randD /= 2.0;
 
 
-
-		//////////////////////////////////////////////////
-		// Sub calculation code
-		//////////////////////////////////////////////////
-
-		// Calculate the lowpass to be used
-		lp = (inputSampleL + inputSampleR) / 2.0;
-		iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleA;
-		iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleB;
-
-		// Gate from airwindows
-		oscGate += fabs(lp * 10.0);
-		oscGate -= 0.001;
-		if (oscGate > 1.0) oscGate = 1.0;
-		if (oscGate < 0) oscGate = 0;
-		//got a value that only goes down low when there's silence or near silence on input
-		clamp = 1.0 - oscGate;
-		clamp *= 0.00001;
-		//set up the thing to choke off oscillations- belt and suspenders affair
-
-
-		if (lp > 0)
+		if ((A > 0) && (B > 0))
 		{
-			//OutputDebugStringW(L"lp is positive.\n");
+			//////////////////////////////////////////////////
+			// Sub calculation code
+			//////////////////////////////////////////////////
 
-			if (WasNegative)
+			// Calculate the lowpass to be used
+			lp = (inputSampleL + inputSampleR) / 2.0;
+			iirDriveSampleA = (iirDriveSampleA * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleA;
+			iirDriveSampleB = (iirDriveSampleB * (1.0 - HeadBumpFreq)) + (lp * HeadBumpFreq); lp = iirDriveSampleB;
+
+			// Gate from airwindows
+			oscGate += fabs(lp * 10.0);
+			oscGate -= 0.001;
+			if (oscGate > 1.0) oscGate = 1.0;
+			if (oscGate < 0) oscGate = 0;
+			//got a value that only goes down low when there's silence or near silence on input
+			clamp = 1.0 - oscGate;
+			clamp *= 0.00001;
+			//set up the thing to choke off oscillations- belt and suspenders affair
+
+
+			if (lp > 0)
 			{
-				SubOctave = !SubOctave;
+				//OutputDebugStringW(L"lp is positive.\n");
+
+				if (WasNegative)
+				{
+					SubOctave = !SubOctave;
+				}
+				WasNegative = false;
 			}
-			WasNegative = false;
+			else
+			{
+				//OutputDebugStringW(L"lp is negative OH MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA.\n");
+				WasNegative = true;
+			}
+
+
+			// This calculates a low pass, then different samples from it and substracts from the low pass even more
+			iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleA;
+			iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleB;
+			iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleC;
+			iirSampleD = (iirSampleD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleD;
+			iirSampleE = (iirSampleE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleE;
+			iirSampleF = (iirSampleF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleF;
+			iirSampleG = (iirSampleG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleG;
+			iirSampleH = (iirSampleH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleH;
+			iirSampleI = (iirSampleI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleI;
+			iirSampleJ = (iirSampleJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJ;
+			iirSampleK = (iirSampleK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleK;
+			iirSampleL = (iirSampleL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleL;
+			iirSampleM = (iirSampleM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleM;
+			iirSampleN = (iirSampleN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleN;
+			iirSampleO = (iirSampleO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleO;
+			iirSampleP = (iirSampleP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleP;
+			iirSampleQ = (iirSampleQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleQ;
+			iirSampleR = (iirSampleR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleR;
+			iirSampleS = (iirSampleS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleS;
+			iirSampleT = (iirSampleT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleT;
+			iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleU;
+			iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleV;
+
+			//iirSampleJA = (iirSampleJA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJA;
+			//iirSampleJB = (iirSampleJB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJB;
+			//iirSampleJC = (iirSampleJC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJC;
+			//iirSampleJD = (iirSampleJD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJD;
+			//iirSampleJE = (iirSampleJE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJE;
+			//iirSampleJF = (iirSampleJF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJF;
+			//iirSampleJG = (iirSampleJG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJG;
+			//iirSampleJH = (iirSampleJH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJH;
+			//iirSampleJI = (iirSampleJI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJI;
+			//iirSampleJJ = (iirSampleJJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJJ;
+			//iirSampleJK = (iirSampleJK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJK;
+			//iirSampleJL = (iirSampleJL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJL;
+			//iirSampleJM = (iirSampleJM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJM;
+			//iirSampleJN = (iirSampleJN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJN;
+			//iirSampleJO = (iirSampleJO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJO;
+			//iirSampleJP = (iirSampleJP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJP;
+			//iirSampleJQ = (iirSampleJQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJQ;
+			//iirSampleJR = (iirSampleJR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJR;
+			//iirSampleJS = (iirSampleJS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJS;
+			//iirSampleJT = (iirSampleJT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJT;
+			//iirSampleJU = (iirSampleJU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJU;
+			//iirSampleJV = (iirSampleJV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJV;
+
+
+			switch (bflip)
+			{
+			case 1:
+				iirHeadBumpA += (lp * BassGain);
+				iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
+				iirHeadBumpA = (invrandD * iirHeadBumpA) + (randD * iirHeadBumpB) + (randD * iirHeadBumpC);
+				if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
+				if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
+				HeadBump = iirHeadBumpA;
+				break;
+			case 2:
+				iirHeadBumpB += (lp * BassGain);
+				iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
+				iirHeadBumpB = (randD * iirHeadBumpA) + (invrandD * iirHeadBumpB) + (randD * iirHeadBumpC);
+				if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
+				if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
+				HeadBump = iirHeadBumpB;
+				break;
+			case 3:
+				iirHeadBumpC += (lp * BassGain);
+				iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
+				iirHeadBumpC = (randD * iirHeadBumpA) + (randD * iirHeadBumpB) + (invrandD * iirHeadBumpC);
+				if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
+				if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
+				HeadBump = iirHeadBumpC;
+				break;
+			}
+
+			//HeadBump = (lp * HeadBumpFreq);
+
+			// Calculate drive samples based off what we've done so far		
+			iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleW;
+			iirSampleX = (iirSampleX * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleX;
+
+			// Create SubBump sample from our head bump to modify further
+			SubBump = HeadBump;
+			iirSampleY = (iirSampleY * (1.0 - iirAmount)) + (SubBump * iirAmount);			SubBump -= iirSampleY;
+
+			// Calculate sub drive samples based off what we've done so far		
+			iirDriveSampleC = (iirDriveSampleC * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleC;
+			iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleD;
+
+			SubBump = fabs(SubBump);
+			if (SubOctave == false) { SubBump = -SubBump; }
+
+			// Note the rand is what is flipping from positive to negative here
+			// This means bflip = 1 A gets inverted
+			// This means bflip = 2 B gets inverted
+			// This means bflip = 3 C gets inverted
+			// This creates a lower octave using math jank on the multiplication depending on sample
+			switch (bflip)
+			{
+			case 1:
+				iirSubBumpA += SubBump;// * BassGain);
+				iirSubBumpA -= (iirSubBumpA * iirSubBumpA * iirSubBumpA * HeadBumpFreq);
+				iirSubBumpA = (invrandD * iirSubBumpA) + (randD * iirSubBumpB) + (randD * iirSubBumpC);
+				if (iirSubBumpA > 0) iirSubBumpA -= clamp;
+				if (iirSubBumpA < 0) iirSubBumpA += clamp;
+				SubBump = iirSubBumpA;
+				break;
+			case 2:
+				iirSubBumpB += SubBump;// * BassGain);
+				iirSubBumpB -= (iirSubBumpB * iirSubBumpB * iirSubBumpB * HeadBumpFreq);
+				iirSubBumpB = (randD * iirSubBumpA) + (invrandD * iirSubBumpB) + (randD * iirSubBumpC);
+				if (iirSubBumpB > 0) iirSubBumpB -= clamp;
+				if (iirSubBumpB < 0) iirSubBumpB += clamp;
+				SubBump = iirSubBumpB;
+				break;
+			case 3:
+				iirSubBumpC += SubBump;// * BassGain);
+				iirSubBumpC -= (iirSubBumpC * iirSubBumpC * iirSubBumpC * HeadBumpFreq);
+				iirSubBumpC = (randD * iirSubBumpA) + (randD * iirSubBumpB) + (invrandD * iirSubBumpC);
+				if (iirSubBumpC > 0) iirSubBumpC -= clamp;
+				if (iirSubBumpC < 0) iirSubBumpC += clamp;
+				SubBump = iirSubBumpC;
+				break;
+			}
+
+			// Resample to reduce the sub bump further
+			iirSampleZ = (iirSampleZ * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq); 			SubBump = iirSampleZ;
+			iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleE;
+			iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleF;
+
+
+			// Sub gain only
+			inputSampleL += (SubBump * SubOutGain);
+			inputSampleR += (SubBump * SubOutGain);
+
+			//inputSampleL += (HeadBump * BassOutGain);
+			//inputSampleR += (HeadBump * BassOutGain);
 		}
-		else
-		{
-			//OutputDebugStringW(L"lp is negative OH MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA MIRA.\n");
-			WasNegative = true;
-		}
-
-
-		// This calculates a low pass, then different samples from it and substracts from the low pass even more
-		iirSampleA = (iirSampleA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleA;
-		iirSampleB = (iirSampleB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleB;
-		iirSampleC = (iirSampleC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleC;
-		iirSampleD = (iirSampleD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleD;
-		iirSampleE = (iirSampleE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleE;
-		iirSampleF = (iirSampleF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleF;
-		iirSampleG = (iirSampleG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleG;
-		iirSampleH = (iirSampleH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleH;
-		iirSampleI = (iirSampleI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleI;
-		iirSampleJ = (iirSampleJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJ;
-		iirSampleK = (iirSampleK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleK;
-		iirSampleL = (iirSampleL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleL;
-		iirSampleM = (iirSampleM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleM;
-		iirSampleN = (iirSampleN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleN;
-		iirSampleO = (iirSampleO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleO;
-		iirSampleP = (iirSampleP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleP;
-		iirSampleQ = (iirSampleQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleQ;
-		iirSampleR = (iirSampleR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleR;
-		iirSampleS = (iirSampleS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleS;
-		iirSampleT = (iirSampleT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleT;
-		iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleU;
-		iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleV;
-
-		//iirSampleJA = (iirSampleJA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJA;
-		//iirSampleJB = (iirSampleJB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJB;
-		//iirSampleJC = (iirSampleJC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJC;
-		//iirSampleJD = (iirSampleJD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJD;
-		//iirSampleJE = (iirSampleJE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJE;
-		//iirSampleJF = (iirSampleJF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJF;
-		//iirSampleJG = (iirSampleJG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJG;
-		//iirSampleJH = (iirSampleJH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJH;
-		//iirSampleJI = (iirSampleJI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJI;
-		//iirSampleJJ = (iirSampleJJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJJ;
-		//iirSampleJK = (iirSampleJK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJK;
-		//iirSampleJL = (iirSampleJL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJL;
-		//iirSampleJM = (iirSampleJM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJM;
-		//iirSampleJN = (iirSampleJN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJN;
-		//iirSampleJO = (iirSampleJO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJO;
-		//iirSampleJP = (iirSampleJP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJP;
-		//iirSampleJQ = (iirSampleJQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJQ;
-		//iirSampleJR = (iirSampleJR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJR;
-		//iirSampleJS = (iirSampleJS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJS;
-		//iirSampleJT = (iirSampleJT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJT;
-		//iirSampleJU = (iirSampleJU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJU;
-		//iirSampleJV = (iirSampleJV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJV;
-
-
-		switch (bflip)
-		{
-		case 1:
-			iirHeadBumpA += (lp * BassGain);
-			iirHeadBumpA -= (iirHeadBumpA * iirHeadBumpA * iirHeadBumpA * HeadBumpFreq);
-			iirHeadBumpA = (invrandD * iirHeadBumpA) + (randD * iirHeadBumpB) + (randD * iirHeadBumpC);
-			if (iirHeadBumpA > 0) iirHeadBumpA -= clamp;
-			if (iirHeadBumpA < 0) iirHeadBumpA += clamp;
-			HeadBump = iirHeadBumpA;
-			break;
-		case 2:
-			iirHeadBumpB += (lp * BassGain);
-			iirHeadBumpB -= (iirHeadBumpB * iirHeadBumpB * iirHeadBumpB * HeadBumpFreq);
-			iirHeadBumpB = (randD * iirHeadBumpA) + (invrandD * iirHeadBumpB) + (randD * iirHeadBumpC);
-			if (iirHeadBumpB > 0) iirHeadBumpB -= clamp;
-			if (iirHeadBumpB < 0) iirHeadBumpB += clamp;
-			HeadBump = iirHeadBumpB;
-			break;
-		case 3:
-			iirHeadBumpC += (lp * BassGain);
-			iirHeadBumpC -= (iirHeadBumpC * iirHeadBumpC * iirHeadBumpC * HeadBumpFreq);
-			iirHeadBumpC = (randD * iirHeadBumpA) + (randD * iirHeadBumpB) + (invrandD * iirHeadBumpC);
-			if (iirHeadBumpC > 0) iirHeadBumpC -= clamp;
-			if (iirHeadBumpC < 0) iirHeadBumpC += clamp;
-			HeadBump = iirHeadBumpC;
-			break;
-		}
-
-		//HeadBump = (lp * HeadBumpFreq);
-
-		// Calculate drive samples based off what we've done so far		
-		iirSampleW = (iirSampleW * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleW;
-		iirSampleX = (iirSampleX * (1.0 - iirAmount)) + (HeadBump * iirAmount); 			HeadBump -= iirSampleX;
-
-		// Create SubBump sample from our head bump to modify further
-		SubBump = HeadBump;
-		iirSampleY = (iirSampleY * (1.0 - iirAmount)) + (SubBump * iirAmount);			SubBump -= iirSampleY;
-
-		// Calculate sub drive samples based off what we've done so far		
-		iirDriveSampleC = (iirDriveSampleC * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleC;
-		iirDriveSampleD = (iirDriveSampleD * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq);			SubBump = iirDriveSampleD;
-
-		SubBump = fabs(SubBump);
-		if (SubOctave == false) { SubBump = -SubBump; }
-
-		// Note the rand is what is flipping from positive to negative here
-		// This means bflip = 1 A gets inverted
-		// This means bflip = 2 B gets inverted
-		// This means bflip = 3 C gets inverted
-		// This creates a lower octave using math jank on the multiplication depending on sample
-		switch (bflip)
-		{
-		case 1:
-			iirSubBumpA += SubBump;// * BassGain);
-			iirSubBumpA -= (iirSubBumpA * iirSubBumpA * iirSubBumpA * HeadBumpFreq);
-			iirSubBumpA = (invrandD * iirSubBumpA) + (randD * iirSubBumpB) + (randD * iirSubBumpC);
-			if (iirSubBumpA > 0) iirSubBumpA -= clamp;
-			if (iirSubBumpA < 0) iirSubBumpA += clamp;
-			SubBump = iirSubBumpA;
-			break;
-		case 2:
-			iirSubBumpB += SubBump;// * BassGain);
-			iirSubBumpB -= (iirSubBumpB * iirSubBumpB * iirSubBumpB * HeadBumpFreq);
-			iirSubBumpB = (randD * iirSubBumpA) + (invrandD * iirSubBumpB) + (randD * iirSubBumpC);
-			if (iirSubBumpB > 0) iirSubBumpB -= clamp;
-			if (iirSubBumpB < 0) iirSubBumpB += clamp;
-			SubBump = iirSubBumpB;
-			break;
-		case 3:
-			iirSubBumpC += SubBump;// * BassGain);
-			iirSubBumpC -= (iirSubBumpC * iirSubBumpC * iirSubBumpC * HeadBumpFreq);
-			iirSubBumpC = (randD * iirSubBumpA) + (randD * iirSubBumpB) + (invrandD * iirSubBumpC);
-			if (iirSubBumpC > 0) iirSubBumpC -= clamp;
-			if (iirSubBumpC < 0) iirSubBumpC += clamp;
-			SubBump = iirSubBumpC;
-			break;
-		}
-
-		// Resample to reduce the sub bump further
-		iirSampleZ = (iirSampleZ * (1.0 - HeadBumpFreq)) + (SubBump * HeadBumpFreq); 			SubBump = iirSampleZ;
-		iirDriveSampleE = (iirDriveSampleE * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleE;
-		iirDriveSampleF = (iirDriveSampleF * (1.0 - iirAmount)) + (SubBump * iirAmount); 			SubBump = iirDriveSampleF;
-
-
-		// Sub gain only
-		inputSampleL += (SubBump * SubOutGain);
-		inputSampleR += (SubBump * SubOutGain);
-
-		//inputSampleL += (HeadBump * BassOutGain);
-		//inputSampleR += (HeadBump * BassOutGain);
-
 
 		//////////////////////////////////////////////////
 		//////////////////////////////////////////////////
@@ -400,69 +406,53 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		// If gain applied
 		if (engageEQ)
 		{
+			if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
+			if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
+
+			inputSampleL = sin(inputSampleL);
+			inputSampleR = sin(inputSampleR);
+
 			// If our split frequency has changed
-			if (lastF != F)
+			if ((lastF != F) || (previousC != C))
 			{
-				// Get IIR coefficients for our current inputs
-				float amplitude;
+				// IIR coefficients for our current inputs
+				amplitude;
 				float omega;
-				float cosine;
-				float sine;
-				float alpha;
-				float beta;
 
 				// Floor our frequency to fix (-inf)/(inf) earbleeds
 				float frequency = floor(iirAmountB);
 				float gain = lowGain;
-				// The internet said to use this for high shelfs
-				float filterQ = 0.707f;
 
-				amplitude = pow(10, gain / 40.0f);
-				omega = (2 * 3.141592 * frequency) / getSampleRate();
-				sine = sin(omega);
-				cosine = cos(omega);
-				alpha = sine / (2.0 * filterQ);
-				beta = sqrt(amplitude + amplitude);
-
-				// Filter coefficient calculation
-				///////////////////////////////////////
-				b0 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine + ((beta) * sine));
-				b1 = 2 * amplitude * ((amplitude - 1) - (amplitude + 1) * cosine);
-				b2 = amplitude * ((amplitude + 1) - (amplitude - 1) * cosine - ((beta) * sine));
-				a0 = (amplitude + 1) + (amplitude - 1) * cosine + ((beta) * sine);
-				a1 = -2 * ((amplitude - 1) + (amplitude + 1) * cosine);
-				a2 = (amplitude + 1) + (amplitude - 1) * cosine - ((beta) * sine);
-
-				// prescale flter constants - this eliminates a0 from filtered audio calculation
-				b0 /= a0;
-				b1 /= a0;
-				b2 /= a0;
-				a1 /= a0;
-				a2 /= a0;
+				amplitude = pow(10, gain / 20.0f);
+				omega = (-2.0f * 3.141592654f * frequency) / getSampleRate();
+				a0LP = 1.0f - omega;
+				b1LP = -omega;
 
 				// Record new split freq as old one for if statement above
 				lastF = F;
 			}
 
-			// Calculate our filtered audio LEFT side
-			filteredL = (b0 * inputSampleL + b1 * inputSampleLA + b2 * inputSampleLAA - a1 * filteredLA - a2 * filteredLAA);
-			// Store previous samples
-			inputSampleLAA = inputSampleLA;
-			inputSampleLA = inputSampleL;
-			filteredLAA = filteredLA;
-			filteredLA = filteredL;
-
-			// Calculate our filtered audio RIGHT side
-			filteredR = (b0 * inputSampleR + b1 * inputSampleRA + b2 * inputSampleRAA - a1 * filteredRA - a2 * filteredRAA);
-			// Store previous samples
-			inputSampleRAA = inputSampleRA;
-			inputSampleRA = inputSampleR;
-			filteredRAA = filteredRA;
-			filteredRA = filteredR;
+			filteredL = a0LP * inputSampleL - b1LP * filteredL + kDC_ADD;
+			filteredR = a0LP * inputSampleR - b1LP * filteredR + kDC_ADD;
+			filteredL -= kDC_ADD;
+			filteredR -= kDC_ADD;
 
 			// Assign output
-			inputSampleL = filteredL;
-			inputSampleR = filteredR;
+			inputSampleL = filteredL*amplitude + (inputSampleL - filteredL);
+			inputSampleR = filteredR*amplitude + (inputSampleR - filteredR);
+
+			if (inputSampleL > 1.0) inputSampleL = 1.0;
+			if (inputSampleL < -1.0) inputSampleL = -1.0;
+			if (inputSampleR > 1.0) inputSampleR = 1.0;
+			if (inputSampleR < -1.0) inputSampleR = -1.0;
+			//without this, you can get a NaN condition where it spits out DC offset at full
+			inputSampleL = asin(inputSampleL);
+			inputSampleR = asin(inputSampleR);
+			//amplitude aspect
+			if (inputSampleL > 1.0) inputSampleL = 1.0;
+			if (inputSampleL < -1.0) inputSampleL = -1.0;
+			if (inputSampleR > 1.0) inputSampleR = 1.0;
+			if (inputSampleR < -1.0) inputSampleR = -1.0;
 		}
 
 		//////////////////////////////////////////////

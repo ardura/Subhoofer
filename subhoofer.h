@@ -73,9 +73,15 @@ private:
 	float a1;
 	float a2;
 
+	float kDC_ADD;
 
-
-
+	float lastF;
+	float previousC;
+	double a0LP;
+	double b1LP;
+	double tmp1LP;
+	double tmp2LP;
+	float amplitude = 0.0f;
 
 
 

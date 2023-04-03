@@ -47,7 +47,7 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -119,14 +119,16 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>false</ConformanceMode>
+      <AdditionalIncludeDirectories>D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\samples\vst2.x\win;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\pluginterfaces\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\source\vst2.x;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\samples\vst2.x\win\vstplug.def</ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -136,7 +138,10 @@
     <ClInclude Include="vstsdk2.4\pluginterfaces\vst2.x\vstfxstore.h" />
     <ClInclude Include="vstsdk2.4\public.sdk\source\vst2.x\aeffeditor.h" />
     <ClInclude Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffect.h" />
-    <ClInclude Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffectx.h" />
+    <ClInclude Include="vstsdk2.4\public.sdk\source\vst2.x\audioeffectx.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ExcludedFromBuild>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="subhoofer_proc.cpp" />
