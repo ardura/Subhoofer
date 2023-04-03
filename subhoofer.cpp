@@ -74,7 +74,6 @@ subhoofer::subhoofer(audioMasterCallback audioMaster) :
 	lowpassSampleRF = 0.0;
 	lowpassSampleRG = 0.0;
 
-	flip = false;
 	flipthree = 0;
 
 	fpdL = 1.0; while (fpdL < 16386) fpdL = rand() * UINT32_MAX;
