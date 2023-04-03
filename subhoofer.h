@@ -45,6 +45,7 @@ public:
 	virtual bool getVendorString(char* text);                     // Vendor info
 	virtual VstInt32 getVendorVersion();                          // Version number
 	virtual void processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames);
+	//virtual void calcBiQuad(float frequency, float gain, float filterQ);
 	//virtual void processDoubleReplacing(double** inputs, double** outputs, VstInt32 sampleFrames);
 	virtual void getProgramName(char* name);                      // read the name from the host
 	virtual void setProgramName(char* name);                      // changes the name of the preset displayed in the host
@@ -63,6 +64,19 @@ private:
 	uint32_t fpdL;
 	uint32_t fpdR;
 	//default stuff
+
+	// Biquad filter coefficients
+	float b0;
+	float b1;
+	float b2;
+	float a0;
+	float a1;
+	float a2;
+
+
+
+
+
 
 
 	double lastSampleL;
@@ -231,6 +245,7 @@ private:
 
 	double randD;
 	double invrandD;
+	//double overallscale;
 	
 
 };
