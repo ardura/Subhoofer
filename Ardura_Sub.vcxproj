@@ -105,7 +105,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\pluginterfaces\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\source\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\wige2\OneDrive\Documents\Git_Repos\Subhoofer\vstsdk2.4\public.sdk\source\vst2.x;C:\Users\wige2\OneDrive\Documents\Git_Repos\Subhoofer\vstsdk2.4\pluginterfaces\vst2.x;C:\Users\wige2\OneDrive\Documents\Git_Repos\Subhoofer\vstsdk2.4;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\pluginterfaces\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\source\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

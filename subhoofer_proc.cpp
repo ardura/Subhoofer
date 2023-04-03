@@ -474,39 +474,20 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		//	Lowpass is after all processing like the compressor that might produce hash
 		if (engageLowpass)
 		{
-			if (flip)
-			{
-				lowpassSampleLAA = (lowpassSampleLAA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLAA;
-				lowpassSampleLBA = (lowpassSampleLBA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLBA;
-				lowpassSampleLCA = (lowpassSampleLCA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLCA;
+			lowpassSampleLAA = (lowpassSampleLAA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
+			inputSampleL = lowpassSampleLAA;
+			lowpassSampleLBA = (lowpassSampleLBA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
+			inputSampleL = lowpassSampleLBA;
+			lowpassSampleLCA = (lowpassSampleLCA * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
+			inputSampleL = lowpassSampleLCA;
 
-				lowpassSampleRAA = (lowpassSampleRAA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRAA;
-				lowpassSampleRBA = (lowpassSampleRBA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRBA;
-				lowpassSampleRCA = (lowpassSampleRCA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRCA;
-			}
-			else
-			{
-				lowpassSampleLAB = (lowpassSampleLAB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLAB;
-				lowpassSampleLBB = (lowpassSampleLBB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLBB;
-				lowpassSampleLCB = (lowpassSampleLCB * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
-				inputSampleL = lowpassSampleLCB;
+			lowpassSampleRAA = (lowpassSampleRAA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
+			inputSampleR = lowpassSampleRAA;
+			lowpassSampleRBA = (lowpassSampleRBA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
+			inputSampleR = lowpassSampleRBA;
+			lowpassSampleRCA = (lowpassSampleRCA * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
+			inputSampleR = lowpassSampleRCA;
 
-				lowpassSampleRAB = (lowpassSampleRAB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRAB;
-				lowpassSampleRBB = (lowpassSampleRBB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRBB;
-				lowpassSampleRCB = (lowpassSampleRCB * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
-				inputSampleR = lowpassSampleRCB;
-
-			}
 			lowpassSampleLG = (lowpassSampleLG * (1.0 - iirAmountC)) + (inputSampleL * iirAmountC);
 			lowpassSampleRG = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
 
@@ -521,7 +502,6 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR *= outputgain;
 		}
 
-		flip = !flip;
 		bflip++;
 		if (bflip < 1 || bflip > 3) bflip = 1;
 
