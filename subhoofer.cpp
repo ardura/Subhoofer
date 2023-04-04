@@ -76,8 +76,9 @@ subhoofer::subhoofer(audioMasterCallback audioMaster) :
 
 	flipthree = 0;
 
-	fpdL = 1.0; while (fpdL < 16386) fpdL = rand() * UINT32_MAX;
-	fpdR = 1.0; while (fpdR < 16386) fpdR = rand() * UINT32_MAX;
+	// Removed randomness to reduce noise
+	fpdL = 0.01; //while (fpdL < 16386) fpdL = rand() * UINT32_MAX;
+	fpdR = 0.01; //while (fpdR < 16386) fpdR = rand() * UINT32_MAX;
 	//this is reset: values being initialized only once. Startup values, whatever they are.
 
 	_canDo.insert("plugAsChannelInsert"); // plug-in can be used as a channel insert effect.
@@ -189,15 +190,15 @@ void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 	switch (index) {
 	//case kParamA: float2string((A), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
 	//case kParamA: float2string(((((A) * 0.1) + 0.02) / overallscale), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
-	case kParamA: float2string(A, text, kVstMaxParamStrLen); break; //Sub Amt 0-1
-	case kParamB: float2string((B * 6.0 ), text, kVstMaxParamStrLen); break; //SubGain -12 to 12
-	case kParamC: float2string((C * 12.0) - 6.0, text, kVstMaxParamStrLen); break; // LowGain -6 to 6
+	case kParamA: float2string(A, text, 4); break; //Sub Amt 0-1
+	case kParamB: float2string((B * 24.0 ), text, 4); break; //SubGain 0 to 24
+	case kParamC: float2string((C * 48.0) - 24.0, text, 4); break; // LowGain -6 to 6
 	//case kParamD: float2string((4 * D * D), text, kVstMaxParamStrLen); break;
 	case kParamD: float2string(D, text, 0); break;
 	//	case kParamE: float2string((E * E * 15.0) + 1.0, text, kVstMaxParamStrLen); break; //TrebFrq 6.0 log 1 to 16 defaulting to 6K
-	case kParamF: float2string(floor((F * F * 770.0) + 30.0), text, kVstMaxParamStrLen); break; //BassFrq 100.0 log 30 to 1600 defaulting to 100 hz
+	case kParamF: float2string(floor((F * F * 770.0) + 30.0), text, 5); break; //BassFrq 100.0 log 30 to 1600 defaulting to 100 hz
 	//	case kParamG: float2string((G * G * 1570.0) + 30.0, text, kVstMaxParamStrLen); break; //Hipass 30.0 log 30 to 1600 defaulting to 30
-	case kParamH: float2string(round(((H * 36.0) - 18.0)*100.0)/100.0, text, kVstMaxParamStrLen); break; //OutGain -12 to 12	//Edited by Ardura
+	case kParamH: float2string(round(((H * 36.0) - 18.0)*100.0)/100.0, text, 4); break; //OutGain -12 to 12	//Edited by Ardura
 	default: break; // unknown parameter, shouldn't happen!
 	} //this displays the values and handles 'popups' where it's discrete choices
 }
