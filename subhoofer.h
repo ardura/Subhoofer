@@ -66,12 +66,18 @@ private:
 	//default stuff
 
 	// Biquad filter coefficients
-	float b0;
-	float b1;
-	float b2;
-	float a0;
-	float a1;
-	float a2;
+	double b0;
+	double b1;
+	double b2;
+	double a0;
+	double a1;
+	double a2;
+
+	// Initialize filter state variables
+	double x1 = 0.0; // x[n-1]
+	double x2 = 0.0; // x[n-2]
+	double y1 = 0.0; // y[n-1]
+	double y2 = 0.0; // y[n-2]
 
 	float kDC_ADD;
 
@@ -83,6 +89,14 @@ private:
 	double tmp2LP;
 	float amplitude = 0.0f;
 
+	double inputLPrev;
+	double inputRPrev;
+	double inputLPrev2;
+	double inputRPrev2;
+	double outputLPrev;
+	double outputLPrev2;
+	double outputRPrev;
+	double outputRPrev2;
 
 
 	double lastSampleL;

@@ -3,8 +3,9 @@
 #endif
 #include <windows.h>
 #include <debugapi.h>
-#include <cmath>
-#include "OnePole.h"
+//#include <cmath>
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
@@ -18,6 +19,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double overallscale = 1.0;
 	overallscale /= 44100.0;
 	overallscale *= getSampleRate();
+	double sampleRateVal = getSampleRate();
 
 	double clamp = 0.0;
 
@@ -54,7 +56,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	previousC = 0.0f;
 
 	// Bass Freq Knob
-	double iirAmountB = ((F * F * 770.0) + 30.0);
+	double SplitFrequency = ((F * F * 770.0) + 30.0);
 	lastF = 0.0;
 
 	// EQ Engaged (Bass Gain knob)
@@ -75,13 +77,6 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 	// Output Gain knob
 	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
-
-	// OnePole Shelfish
-	OnePole* shelfish = new OnePole();
-	shelfish->setFcShelfish();
-	// OnePole HP
-	OnePole* hp = new OnePole();
-
 
 	while (--sampleFrames >= 0)
 	{
@@ -277,82 +272,58 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		// If gain applied
 		if (engageEQ)
 		{
+			double q = 0.707;
+
 			// Normalize high/low values
 			if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 			if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
-			//	// Do this because airwindows does
-			//	inputSampleL = sin(inputSampleL);
-			//	inputSampleR = sin(inputSampleR);
-
-			// If our split frequency has changed
+			// If our split frequency or gain has changed
 			if ((lastF != F) || (previousC != C))
 			{
-				
+				double filterAmp = pow(10.0, lowGain / 40.0);
+				double omega = 2.0 * M_PI * SplitFrequency / sampleRateVal;
+				double sn = sin(omega);
+				double cs = cos(omega);
+				double beta = sqrt(filterAmp + filterAmp);
+				b0 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cs + beta * sn);
+				b1 = 2 * filterAmp * ((filterAmp - 1) - (filterAmp + 1) * cs);
+				b2 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cs - beta * sn);
+				a0 = (filterAmp + 1) + (filterAmp - 1) * cs + beta * sn;
+				a1 = -2 * ((filterAmp - 1) + (filterAmp + 1) * cs);
+				a2 = (filterAmp + 1) + (filterAmp - 1) * cs - beta * sn;
 
-				//amplitude = pow(10, lowGain / 20.0f);
-				amplitude = lowGain;
-				//shelfish->setFcHP(iirAmountB);
-				
+				// prescale flter constants
+				b0 /= a0;
+				b1 /= a0;
+				b2 /= a0;
+				a1 /= a0;
+				a2 /= a0;
 
-
-				//	// IIR coefficients for our current inputs
-				//	amplitude;
-				//	float omega;
-				//	
-				//	// Floor our frequency to fix (-inf)/(inf) earbleeds
-				//	float frequency = floor(iirAmountB);
-				//	
-				//	//float gain = lowGain;
-				//	float kAMP_DB = 8.656170245f;
-				//	float lowVol = std::exp((lowGain / 48.0f) * 48.0f / kAMP_DB);
-				//	
-				//	
-				//	//amplitude = pow(10, gain / 20.0f);
-				//	amplitude = lowVol;
-				//	omega = std::exp(-2.0f * 3.141592654f * frequency) / getSampleRate();
-				//	a0LP = 1.0f - omega;
-				//	b1LP = -omega;
-
-				// Record new split freq as old one for if statement above
 				lastF = F;
+				previousC = C;
 			}
 
+			double tempL;
+			double tempR;
 
-			// Trying to do one-pole filter for this
-			inputSampleL -= (shelfish->process(inputSampleL));
-			inputSampleR -= (shelfish->process(inputSampleR));
+			tempL = b0 * inputSampleL + b1 * inputLPrev + b2 * inputLPrev2 - a1 * outputLPrev - a2 * outputLPrev2;
+			tempR = b0 * inputSampleR + b1 * inputRPrev + b2 * inputRPrev2 - a1 * outputLPrev - a2 * outputRPrev2;
 
-			//inputSampleL *= amplitude;
-			//inputSampleR *= amplitude;
+			inputLPrev2 = inputLPrev;
+			inputRPrev2 = inputRPrev;
 
+			inputLPrev = inputSampleL;
+			inputRPrev = inputSampleR;
 
+			inputSampleL = tempL;
+			inputSampleR = tempR;
 
-			//	// Multiply things to get new filtered audio then subtract kDC_ADD (kDC_ADD = 1e-30f;)
-			//	filteredL = a0LP * inputSampleL - b1LP * filteredL + kDC_ADD;
-			//	filteredR = a0LP * inputSampleR - b1LP * filteredR + kDC_ADD;
-			//	filteredL -= kDC_ADD;
-			//	filteredR -= kDC_ADD;
-			//	
-			//	// Assign output
-			//	//inputSampleL = filteredL*amplitude;
-			//	//inputSampleR = filteredR*amplitude;
-			//	
-			//	inputSampleL = filteredL * amplitude + (inputSampleL - filteredL);
-			//	inputSampleR = filteredR * amplitude + (inputSampleR - filteredR);
-			//	
-			//	//	if (inputSampleL > 1.0) inputSampleL = 1.0;
-			//	//	if (inputSampleL < -1.0) inputSampleL = -1.0;
-			//	//	if (inputSampleR > 1.0) inputSampleR = 1.0;
-			//	//	if (inputSampleR < -1.0) inputSampleR = -1.0;
-			//	//	//without this, you can get a NaN condition where it spits out DC offset at full
-			//	//	inputSampleL = asin(inputSampleL);
-			//	//	inputSampleR = asin(inputSampleR);
-			//	//	//amplitude aspect
-			//	//	if (inputSampleL > 1.0) inputSampleL = 1.0;
-			//	//	if (inputSampleL < -1.0) inputSampleL = -1.0;
-			//	//	if (inputSampleR > 1.0) inputSampleR = 1.0;
-			//	//	if (inputSampleR < -1.0) inputSampleR = -1.0;
+			outputLPrev2 = outputLPrev;
+			outputRPrev2 = outputRPrev;
+
+			outputLPrev = inputSampleL;
+			outputRPrev = inputSampleR;
 		}
 
 		//////////////////////////////////////////////
