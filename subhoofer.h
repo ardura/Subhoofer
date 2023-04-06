@@ -65,6 +65,15 @@ private:
 	uint32_t fpdR;
 	//default stuff
 
+	// Tilt EQ
+	float gain1;
+	float gain2;
+	float highGainT;
+	float lowGainT;
+	float lp_outL;
+	float lp_outR;
+	double denorm = (1.0 / 4294967295.0);
+
 	// Biquad filter coefficients
 	double b0;
 	double b1;

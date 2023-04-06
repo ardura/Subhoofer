@@ -176,10 +176,10 @@ void subhoofer::getParameterName(VstInt32 index, char* text) {
 	switch (index) {
 	case kParamA: vst_strncpy(text, "SubHoof", kVstMaxParamStrLen); break;
 	case kParamB: vst_strncpy(text, "SubGain", kVstMaxParamStrLen); break;
-	case kParamC: vst_strncpy(text, "LowGain", kVstMaxParamStrLen); break;
+	case kParamC: vst_strncpy(text, "TiltEQ", kVstMaxParamStrLen); break;
 	case kParamD: vst_strncpy(text, "Lowpass", kVstMaxParamStrLen); break;
 	//	case kParamE: vst_strncpy(text, "TrebFrq", kVstMaxParamStrLen); break;
-	case kParamF: vst_strncpy(text, "SplitFrq", kVstMaxParamStrLen); break;
+	case kParamF: vst_strncpy(text, "TiltFrq", kVstMaxParamStrLen); break;
 	//case kParamG: vst_strncpy(text, "Hipass", kVstMaxParamStrLen); break;
 	case kParamH: vst_strncpy(text, "OutGain", kVstMaxParamStrLen); break;
 	default: break; // unknown parameter, shouldn't happen!
@@ -192,7 +192,7 @@ void subhoofer::getParameterDisplay(VstInt32 index, char* text) {
 	//case kParamA: float2string(((((A) * 0.1) + 0.02) / overallscale), text, kVstMaxParamStrLen); break; //Sub Amt 0-1
 	case kParamA: float2string(A, text, 4); break; //Sub Amt 0-1
 	case kParamB: float2string((B * 24.0 ), text, 4); break; //SubGain 0 to 24
-	case kParamC: float2string((C * 48.0) - 24.0, text, 4); break; // LowGain -6 to 6
+	case kParamC: float2string((C * 12.0) - 6.0, text, 0); break; // LowGain -6 to 6
 	//case kParamD: float2string((4 * D * D), text, kVstMaxParamStrLen); break;
 	case kParamD: float2string(D, text, 0); break;
 	//	case kParamE: float2string((E * E * 15.0) + 1.0, text, kVstMaxParamStrLen); break; //TrebFrq 6.0 log 1 to 16 defaulting to 6K
@@ -207,7 +207,7 @@ void subhoofer::getParameterLabel(VstInt32 index, char* text) {
 	switch (index) {
 	case kParamA: vst_strncpy(text, "", kVstMaxParamStrLen); break;
 	case kParamB: vst_strncpy(text, "dB", 3); break;
-	case kParamC: vst_strncpy(text, "dB", 3); break;
+	case kParamC: vst_strncpy(text, "", kVstMaxParamStrLen); break;
 	case kParamD: vst_strncpy(text, "dB", 0); break;
 	//	case kParamE: vst_strncpy(text, "Khz", kVstMaxParamStrLen); break;
 	case kParamF: vst_strncpy(text, "hz", kVstMaxParamStrLen); break;

@@ -3,7 +3,7 @@
 #endif
 #include <windows.h>
 #include <debugapi.h>
-//#include <cmath>
+#include <cmath>
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -52,7 +52,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double SubBump = 0.0;
 
 	// Bass Gain knob
-	double lowGain = (C * 48.0) - 24.0;
+	double lowGain = (C * 12.0) - 6.0;
 	previousC = 0.0f;
 
 	// Bass Freq Knob
@@ -272,38 +272,54 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		// If gain applied
 		if (engageEQ)
 		{
-			double q = 0.707;
-
 			// Normalize high/low values
 			if (fabs(inputSampleL) < 1.18e-23) inputSampleL = fpdL * 1.18e-17;
 			if (fabs(inputSampleR) < 1.18e-23) inputSampleR = fpdR * 1.18e-17;
 
+			// rounding of inputs for filters to 3 places
+			lastF = std::round(lastF * 1000.0f) / 1000.0f;
+			F = std::round(F * 1000.0f) / 1000.0f;
+			previousC = std::round(previousC * 1000.0f) / 1000.0f;
+			C = std::round(C * 1000.0f) / 1000.0f;
+
 			// If our split frequency or gain has changed
 			if ((lastF != F) || (previousC != C))
 			{
-				double filterAmp = pow(10.0, lowGain / 40.0);
-				double omega = 2.0 * M_PI * SplitFrequency / sampleRateVal;
-				double sn = sin(omega);
-				double cs = cos(omega);
-				double beta = sqrt(filterAmp + filterAmp);
-				b0 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cs + beta * sn);
-				b1 = 2 * filterAmp * ((filterAmp - 1) - (filterAmp + 1) * cs);
-				b2 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cs - beta * sn);
-				a0 = (filterAmp + 1) + (filterAmp - 1) * cs + beta * sn;
-				a1 = -2 * ((filterAmp - 1) + (filterAmp + 1) * cs);
-				a2 = (filterAmp + 1) + (filterAmp - 1) * cs - beta * sn;
+				// Setup tilt filter values
+				float filterAmp = 6 / log(2);
+				float sr3 = 3 * sampleRateVal;
+				float gfactor = 5;
 
-				// prescale flter constants
-				b0 /= a0;
-				b1 /= a0;
-				b2 /= a0;
-				a1 /= a0;
-				a2 /= a0;
+				// Build filter off lowpass signal gains
+				if (lowGain > 0) {
+					gain1 = lowGain * -gfactor;
+					gain2 = lowGain;
+				}
+				else {
+					// I had to swap gfactor from it's original gain2 implementation to weight based off bass side
+					gain1 = -lowGain * gfactor;
+					gain2 = lowGain;
+				};
+				lowGainT = exp(gain1 / filterAmp) - 1;
+				highGainT = exp(gain2 / filterAmp) - 1;
+
+				// tilt filter
+				float omega = 2 * M_PI * SplitFrequency;
+				float n = 1 / (sr3 + omega);
+				a0 = 2 * omega * n;
+				b1 = (sr3 - omega) * n;
 
 				lastF = F;
 				previousC = C;
 			}
 
+			lp_outL = (a0 * inputSampleL + b1 * lp_outL);
+			inputSampleL = inputSampleL + lowGainT * lp_outL + highGainT * (inputSampleL - lp_outL) + denorm;
+
+			lp_outR = (a0 * inputSampleR + b1 * lp_outR);
+			inputSampleR = inputSampleR + lowGainT * lp_outR + highGainT * (inputSampleR - lp_outR) + +denorm;
+
+			/******************************************************************************************
 			double tempL;
 			double tempR;
 
@@ -324,6 +340,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			outputLPrev = inputSampleL;
 			outputRPrev = inputSampleR;
+			****************************************************************************************/
 		}
 
 		//////////////////////////////////////////////
@@ -364,15 +381,15 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		bflip++;
 		if (bflip < 1 || bflip > 3) bflip = 1;
 
-		//begin 32 bit stereo floating point dither
-		int expon;
-		frexpf((float)inputSampleL, &expon);
-		fpdL ^= fpdL << 13; fpdL ^= fpdL >> 17; fpdL ^= fpdL << 5;
-		inputSampleL += ((double(fpdL) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-		frexpf((float)inputSampleR, &expon);
-		fpdR ^= fpdR << 13; fpdR ^= fpdR >> 17; fpdR ^= fpdR << 5;
-		inputSampleR += ((double(fpdR) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-		//end 32 bit stereo floating point dither
+		//	//begin 32 bit stereo floating point dither
+		//	int expon;
+		//	frexpf((float)inputSampleL, &expon);
+		//	fpdL ^= fpdL << 13; fpdL ^= fpdL >> 17; fpdL ^= fpdL << 5;
+		//	inputSampleL += ((double(fpdL) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
+		//	frexpf((float)inputSampleR, &expon);
+		//	fpdR ^= fpdR << 13; fpdR ^= fpdR >> 17; fpdR ^= fpdR << 5;
+		//	inputSampleR += ((double(fpdR) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
+		//	//end 32 bit stereo floating point dither
 
 		*out1 = inputSampleL;
 		*out2 = inputSampleR;
