@@ -83,7 +83,6 @@ private:
 	float lp_outL;
 	float lp_outR;
 	double denorm = (1.0 / 4294967295.0);
-	float DC_Mean;
 
 	// Biquad filter coefficients
 	double b0;
@@ -239,12 +238,6 @@ private:
 	double iirMidBumpRA;
 	double iirMidBumpRB;
 	double iirMidBumpRC;
-	double MidBumpL;
-	double MidBumpR;
-	double MidSampleA;
-	double MidSampleB;
-	double MidSampleC;
-	double MidSampleD;
 
 	// Counter
 	int bflip;

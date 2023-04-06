@@ -1,7 +1,6 @@
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
-#include "OnePole.h"
 #include <windows.h>
 #include <debugapi.h>
 #include <cmath>
@@ -23,25 +22,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	overallscale *= getSampleRate();
 	double sampleRateVal = getSampleRate();
 
-	//OnePole* dcBlockerLp = new OnePole(sampleRateVal, 5.0);
-
 	double clamp = 0.0;
-
-	// Samples to hold input and EQ changes
-	double bassSampleL = 0.0;
-	double bassSampleR = 0.0;
-
-	// Filtered Samples for calculation
-	double filteredR = 0.0;
-	double filteredRA = 0.0;
-	double filteredRAA = 0.0;
-	double filteredL = 0.0;
-	double filteredLA = 0.0;
-	double filteredLAA = 0.0;
-	double inputSampleLA = 0.0;
-	double inputSampleLAA = 0.0;
-	double inputSampleRA = 0.0;
-	double inputSampleRAA = 0.0;
 
 	// Sub Voicing knob
 	double HeadBump = 0.0;
@@ -249,7 +230,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		if (bflip < 1 || bflip > 3) bflip = 1;
 
 		//////////////////////////////////////////////
-		//	EQ CODE
+		//	TILT EQ CODE
 		//////////////////////////////////////////////
 		// If gain applied
 		if (engageEQ)
@@ -300,33 +281,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 
 			lp_outR = (a0 * inputSampleR + b1 * lp_outR);
 			inputSampleR = inputSampleR + lowGainT * lp_outR + highGainT * (inputSampleR - lp_outR) + +denorm;
-
-			/******************************************************************************************
-			double tempL;
-			double tempR;
-
-			tempL = b0 * inputSampleL + b1 * inputLPrev + b2 * inputLPrev2 - a1 * outputLPrev - a2 * outputLPrev2;
-			tempR = b0 * inputSampleR + b1 * inputRPrev + b2 * inputRPrev2 - a1 * outputLPrev - a2 * outputRPrev2;
-
-			inputLPrev2 = inputLPrev;
-			inputRPrev2 = inputRPrev;
-
-			inputLPrev = inputSampleL;
-			inputRPrev = inputSampleR;
-
-			inputSampleL = tempL;
-			inputSampleR = tempR;
-
-			outputLPrev2 = outputLPrev;
-			outputRPrev2 = outputRPrev;
-
-			outputLPrev = inputSampleL;
-			outputRPrev = inputSampleR;
-			****************************************************************************************/
 		}
 
 		//////////////////////////////////////////////
-		// END EQ
+		// END TILT EQ
 		//////////////////////////////////////////////
 
 		//	Lowpass is after all processing like the compressor that might produce hash
@@ -354,17 +312,10 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		}
 
 		// Remove DC Offset with single pole HP
-		double n = tan(M_PI * 5.0 / sampleRateVal);
-
-		hp_a0 = n + 1;
-
+		hp_a0 = 1;
 		hp_b0 = 1.0;
 		hp_b1 = -1.0;
-		hp_a1 = n - 1;
-
-		hp_b0 /= hp_a0;
-		hp_b1 /= hp_a0;
-		hp_a1 /= hp_a0;
+		hp_a1 = -0.995;
 
 		// Calculated below
 		// double sqrt2 = 1.41421356237;
@@ -372,33 +323,18 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		// double hp_gain = 1 / sqrt(1 + (5.0 / (corner_frequency)) ^ 2);
 		double hp_gain = 0.577350269190468;
 
-		// Handle MONO
-		if (inputSampleL == inputSampleR)
-		{
-			double inputSample = inputSampleL; // replace inputSampleL and inputSampleR with a single inputSample variable
-			double output = inputSample * hp_b0;
-			inputSample = (inputSample * hp_b1) - (output * hp_a1);
-			output = inputSample * hp_b0;
-			inputSample = (inputSample * hp_b1) - (output * hp_a1);
-			inputSampleL = inputSample;
-			inputSampleR = inputSample;
-		}
-		else
-		{
-			double outputL = inputSampleL * hp_b0;
-			inputSampleL = (inputSampleL * hp_b1) - (outputL * hp_a1);
-			outputL = inputSampleL * hp_b0;
-			inputSampleL = (inputSampleL * hp_b1) - (outputL * hp_a1);
+		inputSampleL = hp_gain * inputSampleL;
+		tempL = hp_b0 * inputSampleL + hp_b1 * inputLPrev - hp_a1 * outputLPrev;
+		inputLPrev = inputSampleL;
+		outputLPrev = tempL;
+		inputSampleL = tempL;
 
-			double outputR = inputSampleR * hp_b0;
-			inputSampleR = (inputSampleR * hp_b1) - (outputR * hp_a1);
-			outputR = inputSampleR * hp_b0;
-			inputSampleR = (inputSampleR * hp_b1) - (outputR * hp_a1);
-		}
+		inputSampleR = hp_gain * inputSampleR;
+		tempL = hp_b0 * inputSampleR + hp_b1 * inputRPrev - hp_a1 * outputRPrev;
+		inputRPrev = inputSampleR;
+		outputRPrev = tempL;
+		inputSampleR = tempL;
 
-		inputSampleL *= hp_gain;
-		inputSampleR *= hp_gain;
-		
 		//built in output gain
 		if (outputgain != 1.0) {
 			inputSampleL *= outputgain;
