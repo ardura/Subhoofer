@@ -23,7 +23,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	overallscale *= getSampleRate();
 	double sampleRateVal = getSampleRate();
 
-	OnePole* dcBlockerLp = new OnePole(10.0 / sampleRateVal);
+	//OnePole* dcBlockerLp = new OnePole(sampleRateVal, 5.0);
 
 	double clamp = 0.0;
 
@@ -353,31 +353,58 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR = (lowpassSampleRG * (1.0 - iirAmountC)) + (inputSampleR * iirAmountC);
 		}
 
+		// Remove DC Offset with single pole HP
+		double n = tan(M_PI * 5.0 / sampleRateVal);
 
+		hp_a0 = n + 1;
+
+		hp_b0 = 1.0;
+		hp_b1 = -1.0;
+		hp_a1 = n - 1;
+
+		hp_b0 /= hp_a0;
+		hp_b1 /= hp_a0;
+		hp_a1 /= hp_a0;
+
+		// Calculated below
+		// double sqrt2 = 1.41421356237;
+		// double corner_frequency = 5.0 / sqrt2;
+		// double hp_gain = 1 / sqrt(1 + (5.0 / (corner_frequency)) ^ 2);
+		double hp_gain = 0.577350269190468;
+
+		// Handle MONO
+		if (inputSampleL == inputSampleR)
+		{
+			double inputSample = inputSampleL; // replace inputSampleL and inputSampleR with a single inputSample variable
+			double output = inputSample * hp_b0;
+			inputSample = (inputSample * hp_b1) - (output * hp_a1);
+			output = inputSample * hp_b0;
+			inputSample = (inputSample * hp_b1) - (output * hp_a1);
+			inputSampleL = inputSample;
+			inputSampleR = inputSample;
+		}
+		else
+		{
+			double outputL = inputSampleL * hp_b0;
+			inputSampleL = (inputSampleL * hp_b1) - (outputL * hp_a1);
+			outputL = inputSampleL * hp_b0;
+			inputSampleL = (inputSampleL * hp_b1) - (outputL * hp_a1);
+
+			double outputR = inputSampleR * hp_b0;
+			inputSampleR = (inputSampleR * hp_b1) - (outputR * hp_a1);
+			outputR = inputSampleR * hp_b0;
+			inputSampleR = (inputSampleR * hp_b1) - (outputR * hp_a1);
+		}
+
+		inputSampleL *= hp_gain;
+		inputSampleR *= hp_gain;
+		
 		//built in output gain
 		if (outputgain != 1.0) {
 			inputSampleL *= outputgain;
 			inputSampleR *= outputgain;
 		}
 
-		
-		
-		
-		//double dcblock = ((0.0275 / 44100) * 32000.0) / 300.0;
-		if (inputSampleL > 0) inputSampleL -= dcblock;
-		else inputSampleL += dcblock;
-
-		if (inputSampleR > 0) inputSampleR -= dcblock;
-		else inputSampleR += dcblock;
-
-		//	// Remove DC Offset with single pole HP
-		//	inputSampleL -= dcBlockerLp->process(inputSampleL, outputLPrev);
-		//	inputSampleR -= dcBlockerLp->process(inputSampleR, outputRPrev);
-		//	
-		//	outputLPrev = inputSampleL;
-		//	outputRPrev = inputSampleR;
-		//	
-		// Return outputs to DAW
 		*out1 = inputSampleL;
 		*out2 = inputSampleR;
 

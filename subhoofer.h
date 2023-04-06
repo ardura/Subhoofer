@@ -68,6 +68,7 @@ private:
 
 	// High Pass Calculation
 	float hp_alpha = 2.0 * M_PI * 20.0 / getSampleRate();
+	float hp_a0 = 0.0;
 	float hp_a1 = (1 - exp(-hp_alpha)) / (1 + exp(-hp_alpha));
 	float hp_b0 = (1 + hp_a1) / 2.0;
 	float hp_b1 = -hp_b0;
@@ -110,10 +111,14 @@ private:
 
 	double inputLPrev;
 	double inputRPrev;
+	double inputLPrev2;
+	double inputRPrev2;
 	double tempL;
 	double tempR;
 	double outputLPrev;
 	double outputRPrev;
+	double outputLPrev2;
+	double outputRPrev2;
 	double dcblock = ((0.0275 / 44100) * 32000.0) / 300.0;
 
 
