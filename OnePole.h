@@ -1,49 +1,36 @@
-#pragma once
-// Filter from talking with ChatGPT isolated via OnePole.h structure I found in another dsp forum and saved
-// This should turn into a proper reusable header
-// Ardura 4-5-2023
+//
+//  OnePole.h
+//  From https://www.earlevel.com/main/2012/12/15/a-one-pole-filter/
+//
 
 #ifndef OnePole_h
 #define OnePole_h
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 class OnePole {
 public:
-    OnePole() { 
-        input = 0.0;
-        a0 = 1.0; 
-        a1 = 0.0;
-        a2 = 0.0;
-        b0 = 0.0;
-        b1 = 0.0;
-        b2 = 0.0;
-    };
+    OnePole() { a0 = 1.0; b1 = 0.0; z1 = 0.0; };
+    OnePole(double Fc) { z1 = 0.0; setFc(Fc); };
     ~OnePole();
-    void calculateNew(double cutoffFreq, double filterGain, double sampleRate);
-    double process(double input, double &inputPrev, double &outputPrev);
+    void setFc(double Fc);
+    float process(double in, double prevOut);
 
 protected:
-    double a0, a1, a2, b0, b1, b2, input;
+    double a0, b1, z1;
 };
 
-inline void OnePole::calculateNew(double cutoffFreq, double filterGain, double sampleRate) {
-    double filterAmp = pow(10, filterGain / 40);  // Convert gain from dB to amplitude ratio
-    double w0 = 2 * 3.141592654f * cutoffFreq / sampleRate;
-    double sinw0 = sin(w0);
-    double cosw0 = cos(w0);
-    double alpha = sinw0 / (2.0 * sqrt(filterAmp));
+inline void OnePole::setFc(double Fc) {
+    // Using HP
+    //b1 = -exp(-2.0 * M_PI * (0.5 - Fc));
+    //a0 = 1.0 + b1;
 
-    // Calculate the filter coefficients
-    b0 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cosw0 + 2 * sqrt(filterAmp) * alpha);
-    b1 = 2 * filterAmp * ((filterAmp - 1) - (filterAmp + 1) * cosw0);
-    b2 = filterAmp * ((filterAmp + 1) - (filterAmp - 1) * cosw0 - 2 * sqrt(filterAmp) * alpha);
-    a0 = (filterAmp + 1) + (filterAmp - 1) * cosw0 + 2 * sqrt(filterAmp) * alpha;
-    a1 = -2 * ((filterAmp - 1) + (filterAmp + 1) * cosw0);
-    a2 = (filterAmp + 1) + (filterAmp - 1) * cosw0 - 2 * sqrt(filterAmp) * alpha;
+    b1 = exp(-2.0 * M_PI * Fc);
+    a0 = 1.0 - b1;
 }
 
-inline double OnePole::process(double input, double &inputPrev, double &outputPrev) {
-    double output = (b0 / a0) * input + (b1 / a0) * inputPrev + (b2 / a0) * outputPrev - (a1 / a0) * inputPrev - (a2 / a0) * outputPrev;
-    return output;
+inline float OnePole::process(double in, double prevOut) {
+    return z1 = in * a0 + z1 * b1;
 }
 
 #endif

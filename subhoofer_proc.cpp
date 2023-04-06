@@ -1,9 +1,11 @@
 #ifndef __subhoofer_H
 #include "subhoofer.h"
 #endif
+#include "OnePole.h"
 #include <windows.h>
 #include <debugapi.h>
 #include <cmath>
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -20,6 +22,8 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	overallscale /= 44100.0;
 	overallscale *= getSampleRate();
 	double sampleRateVal = getSampleRate();
+
+	OnePole* dcBlockerLp = new OnePole(10.0 / sampleRateVal);
 
 	double clamp = 0.0;
 
@@ -154,30 +158,6 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			iirSampleU = (iirSampleU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleU;
 			iirSampleV = (iirSampleV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleV;
 
-			//iirSampleJA = (iirSampleJA * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJA;
-			//iirSampleJB = (iirSampleJB * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJB;
-			//iirSampleJC = (iirSampleJC * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJC;
-			//iirSampleJD = (iirSampleJD * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJD;
-			//iirSampleJE = (iirSampleJE * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJE;
-			//iirSampleJF = (iirSampleJF * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJF;
-			//iirSampleJG = (iirSampleJG * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJG;
-			//iirSampleJH = (iirSampleJH * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJH;
-			//iirSampleJI = (iirSampleJI * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJI;
-			//iirSampleJJ = (iirSampleJJ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJJ;
-			//iirSampleJK = (iirSampleJK * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJK;
-			//iirSampleJL = (iirSampleJL * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJL;
-			//iirSampleJM = (iirSampleJM * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJM;
-			//iirSampleJN = (iirSampleJN * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJN;
-			//iirSampleJO = (iirSampleJO * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJO;
-			//iirSampleJP = (iirSampleJP * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJP;
-			//iirSampleJQ = (iirSampleJQ * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJQ;
-			//iirSampleJR = (iirSampleJR * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJR;
-			//iirSampleJS = (iirSampleJS * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJS;
-			//iirSampleJT = (iirSampleJT * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJT;
-			//iirSampleJU = (iirSampleJU * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJU;
-			//iirSampleJV = (iirSampleJV * (1.0 - iirAmount)) + (lp * iirAmount);			lp -= iirSampleJV;
-
-
 			switch (bflip)
 			{
 				case 1:
@@ -265,6 +245,8 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			inputSampleR += (SubBump * SubOutGain);
 		}
 
+		bflip++;
+		if (bflip < 1 || bflip > 3) bflip = 1;
 
 		//////////////////////////////////////////////
 		//	EQ CODE
@@ -372,25 +354,30 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		}
 
 
-		//built in output trim and dry/wet if desired
+		//built in output gain
 		if (outputgain != 1.0) {
 			inputSampleL *= outputgain;
 			inputSampleR *= outputgain;
 		}
 
-		bflip++;
-		if (bflip < 1 || bflip > 3) bflip = 1;
+		
+		
+		
+		//double dcblock = ((0.0275 / 44100) * 32000.0) / 300.0;
+		if (inputSampleL > 0) inputSampleL -= dcblock;
+		else inputSampleL += dcblock;
 
-		//	//begin 32 bit stereo floating point dither
-		//	int expon;
-		//	frexpf((float)inputSampleL, &expon);
-		//	fpdL ^= fpdL << 13; fpdL ^= fpdL >> 17; fpdL ^= fpdL << 5;
-		//	inputSampleL += ((double(fpdL) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-		//	frexpf((float)inputSampleR, &expon);
-		//	fpdR ^= fpdR << 13; fpdR ^= fpdR >> 17; fpdR ^= fpdR << 5;
-		//	inputSampleR += ((double(fpdR) - uint32_t(0x7fffffff)) * 5.5e-36l * pow(2, expon + 62));
-		//	//end 32 bit stereo floating point dither
+		if (inputSampleR > 0) inputSampleR -= dcblock;
+		else inputSampleR += dcblock;
 
+		//	// Remove DC Offset with single pole HP
+		//	inputSampleL -= dcBlockerLp->process(inputSampleL, outputLPrev);
+		//	inputSampleR -= dcBlockerLp->process(inputSampleR, outputRPrev);
+		//	
+		//	outputLPrev = inputSampleL;
+		//	outputRPrev = inputSampleR;
+		//	
+		// Return outputs to DAW
 		*out1 = inputSampleL;
 		*out2 = inputSampleR;
 

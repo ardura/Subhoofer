@@ -14,6 +14,7 @@
 
 #include <set>
 #include <string>
+#define _USE_MATH_DEFINES
 #include <math.h>
 
 enum {
@@ -65,6 +66,14 @@ private:
 	uint32_t fpdR;
 	//default stuff
 
+	// High Pass Calculation
+	float hp_alpha = 2.0 * M_PI * 20.0 / getSampleRate();
+	float hp_a1 = (1 - exp(-hp_alpha)) / (1 + exp(-hp_alpha));
+	float hp_b0 = (1 + hp_a1) / 2.0;
+	float hp_b1 = -hp_b0;
+	float hp_x1 = 0;
+	float hp_y1 = 0;
+
 	// Tilt EQ
 	float gain1;
 	float gain2;
@@ -73,6 +82,7 @@ private:
 	float lp_outL;
 	float lp_outR;
 	double denorm = (1.0 / 4294967295.0);
+	float DC_Mean;
 
 	// Biquad filter coefficients
 	double b0;
@@ -100,12 +110,11 @@ private:
 
 	double inputLPrev;
 	double inputRPrev;
-	double inputLPrev2;
-	double inputRPrev2;
+	double tempL;
+	double tempR;
 	double outputLPrev;
-	double outputLPrev2;
 	double outputRPrev;
-	double outputRPrev2;
+	double dcblock = ((0.0275 / 44100) * 32000.0) / 300.0;
 
 
 	double lastSampleL;
@@ -199,33 +208,6 @@ private:
 	double iirSampleX;
 	double iirSampleY;
 	double iirSampleZ;
-
-	double iirSampleJA;
-	double iirSampleJB;
-	double iirSampleJC;
-	double iirSampleJD;
-	double iirSampleJE;
-	double iirSampleJF;
-	double iirSampleJG;
-	double iirSampleJH;
-	double iirSampleJI;
-	double iirSampleJJ;
-	double iirSampleJK;
-	double iirSampleJL;
-	double iirSampleJM;
-	double iirSampleJN;
-	double iirSampleJO;
-	double iirSampleJP;
-	double iirSampleJQ;
-	double iirSampleJR;
-	double iirSampleJS;
-	double iirSampleJT;
-	double iirSampleJU;
-	double iirSampleJV;
-	double iirSampleJW;
-	double iirSampleJX;
-	double iirSampleJY;
-	double iirSampleJZ;
 	
 	double iirSubBumpA;
 	double iirSubBumpB;
