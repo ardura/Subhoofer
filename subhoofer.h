@@ -20,8 +20,8 @@
 enum {
 	kParamA = 0,	
 	kParamB = 1,
-	kParamC = 2,
-	kParamD = 3,
+	kParamD = 2,
+	kParamC = 3,
 	//kParamE = 4,
 	kParamF = 4,
 	//kParamG = 6,
