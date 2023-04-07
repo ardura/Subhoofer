@@ -83,8 +83,9 @@ private:
 	float lp_outL;
 	float lp_outR;
 	double denorm = (1.0 / 4294967295.0);
+	float amplitude = 0.0f;
 
-	// Biquad filter coefficients
+	// Biquad filter coefficients for TILT EQ
 	double b0;
 	double b1;
 	double b2;
@@ -92,34 +93,17 @@ private:
 	double a1;
 	double a2;
 
-	// Initialize filter state variables
-	double x1 = 0.0; // x[n-1]
-	double x2 = 0.0; // x[n-2]
-	double y1 = 0.0; // y[n-1]
-	double y2 = 0.0; // y[n-2]
-
-	float kDC_ADD;
-
+	// Parameter memory
 	float lastF;
 	float previousC;
-	double a0LP;
-	double b1LP;
-	double tmp1LP;
-	double tmp2LP;
-	float amplitude = 0.0f;
 
+	// Feedback/Feedforward variables
 	double inputLPrev;
 	double inputRPrev;
-	double inputLPrev2;
-	double inputRPrev2;
 	double tempL;
 	double tempR;
 	double outputLPrev;
 	double outputRPrev;
-	double outputLPrev2;
-	double outputRPrev2;
-	double dcblock = ((0.0275 / 44100) * 32000.0) / 300.0;
-
 
 	double lastSampleL;
 	double last2SampleL;
@@ -132,58 +116,15 @@ private:
 	double iirHeadBumpB;
 	double iirHeadBumpC;
 
-	//begin EQ
-	double iirLowSampleLA;
-	double iirLowSampleLB;
-	double iirLowSampleLC;
-	double iirLowSampleLD;
-	double iirLowSampleLE;
-	double iirLowSampleL;
-
-	double iirLowSampleRA;
-	double iirLowSampleRB;
-	double iirLowSampleRC;
-	double iirLowSampleRD;
-	double iirLowSampleRE;
-	double iirLowSampleR;
-
-	double tripletLA;
-	double tripletLB;
-	double tripletLC;
-	double tripletFactorL;
-
-	double tripletRA;
-	double tripletRB;
-	double tripletRC;
-	double tripletFactorR;
-
+	// Lowpass variables
 	double lowpassSampleLAA;
-	double lowpassSampleLAB;
 	double lowpassSampleLBA;
-	double lowpassSampleLBB;
 	double lowpassSampleLCA;
-	double lowpassSampleLCB;
-	double lowpassSampleLDA;
-	double lowpassSampleLDB;
-	double lowpassSampleLE;
-	double lowpassSampleLF;
 	double lowpassSampleLG;
-
 	double lowpassSampleRAA;
-	double lowpassSampleRAB;
 	double lowpassSampleRBA;
-	double lowpassSampleRBB;
 	double lowpassSampleRCA;
-	double lowpassSampleRCB;
-	double lowpassSampleRDA;
-	double lowpassSampleRDB;
-	double lowpassSampleRE;
-	double lowpassSampleRF;
 	double lowpassSampleRG;
-
-	bool flip;
-	int flipthree;
-	//end EQ
 
 	// Samples for bass reduction
 	double iirSampleA;
@@ -217,9 +158,6 @@ private:
 	double iirSubBumpB;
 	double iirSubBumpC;
 
-	//double HeadBump = 0.0;
-	//double SubBump;
-	//double lp;
 	double oscGate;
 
 	double iirDriveSampleC;
@@ -231,15 +169,7 @@ private:
 	bool WasNegative;
 	bool SubOctave;
 
-	// MID
-	double iirMidBumpLA;
-	double iirMidBumpLB;
-	double iirMidBumpLC;
-	double iirMidBumpRA;
-	double iirMidBumpRB;
-	double iirMidBumpRC;
-
-	// Counter
+	// Counter for octave
 	int bflip;
 
 	// Inputs
@@ -247,16 +177,13 @@ private:
 	float B;
 	float C;
 	float D;
-	//float E;
+
 	float F;
-	//float G;
+
 	float H;
 
 	double randD;
 	double invrandD;
-	//double overallscale;
-	
-
 };
 
 #endif

@@ -123,6 +123,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\samples\vst2.x\win;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\pluginterfaces\vst2.x;D:\VST_ME\Ardura_Sub\Subhoofer\vstsdk2.4\public.sdk\source\vst2.x;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -133,7 +134,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="OnePole.h" />
     <ClInclude Include="subhoofer.h" />
     <ClInclude Include="vstsdk2.4\pluginterfaces\vst2.x\aeffect.h" />
     <ClInclude Include="vstsdk2.4\pluginterfaces\vst2.x\aeffectx.h" />

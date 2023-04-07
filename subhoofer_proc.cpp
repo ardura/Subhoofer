@@ -10,41 +10,42 @@
 
 void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampleFrames)
 {
-	kDC_ADD = 1e-30f;
-
 	float* in1 = inputs[0];
 	float* in2 = inputs[1];
 	float* out1 = outputs[0];
 	float* out2 = outputs[1];
 
+	// Used to scale head bump frequency for Subhoof
 	double overallscale = 1.0;
 	overallscale /= 44100.0;
 	overallscale *= getSampleRate();
+
+	// Hold our sample rate for use in other spots
 	double sampleRateVal = getSampleRate();
 
 	double clamp = 0.0;
 
-	// Sub Voicing knob
+	// Sub Voicing(Hoof) knob
 	double HeadBump = 0.0;
 	double HeadBumpFreq = (((A) * 0.1) + 0.02) / overallscale;
 	double iirAmount = HeadBumpFreq / 44.1;
 
-	// Sub hardcoded gain
-	double BassGain = 0.6;
+	// Sub hardcoded gain/drive for Hoof knob
+	double BassGain = 0.7;
 
 	// Sub Gain knob
 	double SubOutGain = B*24.0;
 	double SubBump = 0.0;
 
-	// Bass Gain knob
+	// Tilt EQ
 	double lowGain = (C * 12.0) - 6.0;
 	previousC = 0.0f;
 
-	// Bass Freq Knob
+	// Split Freq Knob
 	double SplitFrequency = ((F * F * 770.0) + 30.0);
 	lastF = 0.0;
 
-	// EQ Engaged (Bass Gain knob)
+	// If the EQ is Engaged (Tilt EQ knob)
 	bool engageEQ = true;
 	if (0.0 == lowGain) engageEQ = false;
 
@@ -52,17 +53,18 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 	double lp;
 	// 4*Frequency^2 Curve for lowpass freq slider
 	double iirAmountC = (4 * D * D);
-
 	// Normalize iirAmountC (shouldn't happen)
 	if (iirAmountC > 1.0) iirAmountC = 1.0;
 
 	// Should lowpass code run?
 	bool engageLowpass = false;
+	// If the knob is not all the way up
 	if ((D * D * 4) < 4) engageLowpass = true;
 
-	// Output Gain knob
+	// Output Gain knob - the pow(10.0,X/20.0) converts to amplitude from dB
 	double outputgain = pow(10.0, ((H * 36.0) - 18.0) / 20.0);
 
+	// Process audio sample by sample as a stream
 	while (--sampleFrames >= 0)
 	{
 		double inputSampleL = *in1;
@@ -183,7 +185,7 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 			// Flip the bump sample per SubOctave true/false for the half-frequency
 			if (SubOctave == false) { SubBump = -SubBump; }
 
-			// Note the randD is what is flipping from positive to negative here
+			// Note the randD/invrandD is what is flipping from positive to negative here
 			// This means bflip = 1 A gets inverted
 			// This means bflip = 2 B gets inverted
 			// This means bflip = 3 C gets inverted
@@ -317,18 +319,20 @@ void subhoofer::processReplacing(float** inputs, float** outputs, VstInt32 sampl
 		hp_b1 = -1.0;
 		hp_a1 = -0.995;
 
-		// Calculated below
+		// Calculated below by Ardura in advance!
 		// double sqrt2 = 1.41421356237;
 		// double corner_frequency = 5.0 / sqrt2;
 		// double hp_gain = 1 / sqrt(1 + (5.0 / (corner_frequency)) ^ 2);
 		double hp_gain = 0.577350269190468;
 
+		// Apply the 1 pole HP
 		inputSampleL = hp_gain * inputSampleL;
 		tempL = hp_b0 * inputSampleL + hp_b1 * inputLPrev - hp_a1 * outputLPrev;
 		inputLPrev = inputSampleL;
 		outputLPrev = tempL;
 		inputSampleL = tempL;
 
+		// Apply the 1 pole HP
 		inputSampleR = hp_gain * inputSampleR;
 		tempL = hp_b0 * inputSampleR + hp_b1 * inputRPrev - hp_a1 * outputRPrev;
 		inputRPrev = inputSampleR;
