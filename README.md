@@ -1,5 +1,5 @@
 # Subhoofer
- Sub enhancement inspired by a few Airwindows plugins
+ Sub enhancement inspired by a few Airwindows plugins. This is a windows VST 2 plugin!
 
 **Subhoofer** is a sub and bass enhancement plugin aimed at being a lightweight replacement for
 other subharmonic generation plugins.
