@@ -31,6 +31,12 @@ pub struct Gain {
     // normalize the peak meter's response based on the sample rate with this
     out_meter_decay_weight: f32,
 
+    // "header" variables from C++ class
+    lp: f32,
+    iirDriveSampleA: f32,
+    iirDriveSampleB: f32,
+    oscGate: f32,
+
     // The current data for the different meters
     out_meter: Arc<AtomicF32>,
     in_meter: Arc<AtomicF32>,
@@ -58,6 +64,9 @@ struct GainParams {
     #[id = "Harmonics"]
     pub harmonics: FloatParam,
 
+    #[id = "Sub Algorithm"]
+    pub sub_algorithm: IntParam,
+
     #[id = "output_gain"]
     pub output_gain: FloatParam,
 
@@ -72,6 +81,10 @@ impl Default for Gain {
             out_meter_decay_weight: 1.0,
             out_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
             in_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
+            oscGate: 0.0,
+            lp: 0.0,
+            iirDriveSampleA: 0.0,
+            iirDriveSampleB: 0.0,
         }
     }
 }
@@ -152,6 +165,14 @@ impl Default for GainParams {
             .with_unit(" dB Sub Drive")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
+            // Sub algorithm Parameter
+            sub_algorithm: IntParam::new(
+                "Sub Algorithm",
+                1,
+                IntRange::Linear { min: 1, max: 3 },
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0)),
 
             // Output gain parameter
             output_gain: FloatParam::new(
@@ -379,6 +400,7 @@ impl Plugin for Gain {
             let output_gain: f32 = self.params.output_gain.smoothed.next();
             let sub_drive: f32 = self.params.sub_drive.smoothed.next();
             let harmonics: f32 = self.params.harmonics.smoothed.next();
+            let sub_algorithm: i32 = self.params.sub_algorithm.smoothed.next();
             let dry_wet: f32 = self.params.dry_wet.value();
 
             let fake_random: f32 = 0.83;
@@ -407,11 +429,31 @@ impl Plugin for Gain {
                 // BassGain = sub_drive
 
                 // Sub drive samples
-                lp = *sample / 2048.0;
-                iirDriveSampleA = (iirDriveSampleA * (1.0 - sub_headbump_freq)) + (lp * sub_headbump_freq);
-                lp = iirDriveSampleA;
+                self.lp = *sample / 2048.0;
+                self.iirDriveSampleA = (self.iirDriveSampleA * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
+                self.lp = self.iirDriveSampleA;
 
+                if sub_algorithm == 1
+                {
+                    // Gate from airwindows
+                    self.oscGate += (self.lp * 10.0).abs();
+                    self.oscGate -= 0.001;
+                    if self.oscGate > 1.0 {self.oscGate = 1.0;}
+                    if self.oscGate < 0.0 {self.oscGate = 0.0;}
+                    //got a value that only goes down low when there's silence or near silence on input
+                    let clamp = (1.0 - self.oscGate) * 0.00001;
 
+                    // Figure out our zero crossing
+                }
+                else if sub_algorithm == 2
+                {
+                    // TODO: Pitch shift
+                }
+                else if sub_algorithm == 3
+                {
+                    // TODO: FFT Find lowest Freq
+                }
+                
 
                 processed_sample = 0.0;
                 ///////////////////////////////////////////////////////////////////////
