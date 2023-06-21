@@ -1,11 +1,9 @@
 mod ui_knob;
 mod db_meter;
 use atomic_float::AtomicF32;
-use duro_process::{Console};
 use nih_plug::{prelude::*};
 use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState};
 use std::{sync::{Arc}, ops::RangeInclusive};
-mod duro_process;
 
 /**************************************************
  * Duro Console by Ardura
@@ -18,10 +16,11 @@ const A_TEAL: Color32 = Color32::from_rgb(60, 110, 113);
 const A_DARK_GRAY: Color32 = Color32::from_rgb(53, 53, 53);
 const A_PLATINUM: Color32 = Color32::from_rgb(217, 217, 217);
 const A_BLUE: Color32 = Color32::from_rgb(40, 75, 99);
+const A_WHITE: Color32 = Color32::WHITE;
 
 // Plugin sizing
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 180;
+const WIDTH: u32 = 400;
+const HEIGHT: u32 = 500;
 
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 100.0;
@@ -31,9 +30,6 @@ pub struct Gain {
 
     // normalize the peak meter's response based on the sample rate with this
     out_meter_decay_weight: f32,
-
-    // Console class
-    console: Console,
 
     // The current data for the different meters
     out_meter: Arc<AtomicF32>,
@@ -50,17 +46,17 @@ struct GainParams {
     #[id = "free_gain"]
     pub free_gain: FloatParam,
 
-    #[id = "threshold"]
-    pub threshold: FloatParam,
+    #[id = "Hoof Hardness"]
+    pub hoof_hardness: FloatParam,
 
-    #[id = "drive"]
-    pub drive: FloatParam,
+    #[id = "Sub Gain"]
+    pub sub_gain: FloatParam,
 
-    #[id = "type"]
-    pub sat_type: EnumParam<duro_process::SaturationModeEnum>,
+    #[id = "Sub Drive"]
+    pub sub_drive: FloatParam,
 
-    #[id = "console_type"]
-    pub console_type: EnumParam<duro_process::ConsoleMode>,
+    #[id = "Harmonics"]
+    pub harmonics: FloatParam,
 
     #[id = "output_gain"]
     pub output_gain: FloatParam,
@@ -73,7 +69,6 @@ impl Default for Gain {
     fn default() -> Self {
         Self {
             params: Arc::new(GainParams::default()),
-            console:duro_process::Console::new(0.0,4,crate::duro_process::ConsoleMode::BYPASS,44100.0),
             out_meter_decay_weight: 1.0,
             out_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
             in_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
@@ -96,37 +91,65 @@ impl Default for GainParams {
                     factor: FloatRange::gain_skew_factor(-12.0, 12.0),
                 },
             )
-            .with_smoother(SmoothingStyle::Logarithmic(50.0))
+            .with_smoother(SmoothingStyle::Logarithmic(30.0))
             .with_unit(" Input Gain")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
 
-            // Drive Parameter
-            drive: FloatParam::new(
-                "Drive",
-                0.0,
+            // Hoof Parameter
+            hoof_hardness: FloatParam::new(
+                "Hoof Hardness",
+                0.5,
                 FloatRange::Linear {
                     min: 0.0,
-                    max: 2.0,
+                    max: 1.0,
                 },
             )
-            .with_smoother(SmoothingStyle::Linear(50.0))
-            .with_unit(" % Drive")
-            .with_value_to_string(formatters::v2s_f32_percentage(2))
-            .with_string_to_value(formatters::s2v_f32_percentage()),
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" Hardness"),
 
-            // Threshold dB parameter
-            threshold: FloatParam::new(
-                "Threshold",
-                util::db_to_gain(-6.0),
+            // Sub gain dB parameter
+            sub_gain: FloatParam::new(
+                "Sub Gain",
+                util::db_to_gain(3.0),
                 FloatRange::Skewed {
-                    min: util::db_to_gain(-30.0),
-                    max: util::db_to_gain(0.0),
-                    factor: FloatRange::gain_skew_factor(-30.0, 0.0),
+                    min: util::db_to_gain(0.0),
+                    max: util::db_to_gain(24.0),
+                    factor: FloatRange::gain_skew_factor(0.0, 24.0),
                 },
             )
-            .with_smoother(SmoothingStyle::Logarithmic(50.0))
-            .with_unit(" dB Threshold")
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" dB Sub Gain")
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
+            // Sub Drive dB parameter
+            sub_drive: FloatParam::new(
+                "Sub Drive",
+                util::db_to_gain(0.0),
+                FloatRange::Skewed {
+                    min: util::db_to_gain(0.0),
+                    max: util::db_to_gain(24.0),
+                    factor: FloatRange::gain_skew_factor(0.0, 24.0),
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" dB Sub Drive")
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
+            // Harmonics Parameter
+            harmonics: FloatParam::new(
+                "Harmonics",
+                util::db_to_gain(-24.0),
+                FloatRange::Skewed {
+                    min: util::db_to_gain(-24.0),
+                    max: util::db_to_gain(24.0),
+                    factor: FloatRange::gain_skew_factor(-24.0, 24.0),
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" dB Sub Drive")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
 
@@ -144,12 +167,6 @@ impl Default for GainParams {
             .with_unit(" dB Output Gain")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
-
-            // Compressor Type parameter
-            console_type: EnumParam::new("name",crate::duro_process::ConsoleMode::BYPASS),
-
-            // Saturation Type parameter
-            sat_type: EnumParam::new("name",crate::duro_process::SaturationModeEnum::NONESAT),
 
             // Dry/Wet parameter
             dry_wet: FloatParam::new(
@@ -203,28 +220,29 @@ impl Plugin for Gain {
                 egui::CentralPanel::default()
                     .show(egui_ctx, |ui| {
                         // Change colors - there's probably a better way to do this
-                        let mut style_var = ui.style_mut().clone();
-                        style_var.visuals.widgets.inactive.bg_fill = DARKTEAL;
+                        let style_var = ui.style_mut().clone();
+                        //style_var.visuals.widgets.inactive.bg_fill = A_DARK_GRAY;
 
                         // Assign default colors if user colors not set
-                        style_var.visuals.widgets.inactive.fg_stroke.color = LIGHTTEAL;
+                        /*
+                        style_var.visuals.widgets.inactive.fg_stroke.color = A_TEAL;
                         style_var.visuals.widgets.noninteractive.fg_stroke.color = Color32::WHITE;
-                        style_var.visuals.widgets.inactive.bg_stroke.color = ORANGE;
+                        style_var.visuals.widgets.inactive.bg_stroke.color = A_PLATINUM;
                         style_var.visuals.widgets.active.fg_stroke.color = Color32::LIGHT_RED;
-                        style_var.visuals.widgets.active.bg_stroke.color = TEAL;
-                        style_var.visuals.widgets.open.fg_stroke.color = MACARONI;
+                        style_var.visuals.widgets.active.bg_stroke.color = A_WHITE;
+                        style_var.visuals.widgets.open.fg_stroke.color = A_BLUE;
                         // Param fill
-                        style_var.visuals.selection.bg_fill = TEAL;
+                        style_var.visuals.selection.bg_fill = A_WHITE;
 
                         style_var.visuals.widgets.noninteractive.bg_stroke.color = Color32::LIGHT_YELLOW;
                         style_var.visuals.widgets.noninteractive.bg_fill = Color32::RED;
-
+                        */
                         // Trying to draw background as rect
                         ui.painter().rect_filled(
                             Rect::from_x_y_ranges(
                                 RangeInclusive::new(0.0, WIDTH as f32), 
                                 RangeInclusive::new(0.0, HEIGHT as f32)), 
-                            Rounding::from(16.0), DARKTEAL);
+                            Rounding::from(16.0), A_DARK_GRAY);
 
                         // Screws for that vintage look
                         let screw_space = 10.0;
@@ -238,7 +256,7 @@ impl Plugin for Gain {
                         // GUI Structure
                         ui.vertical(|ui| {
                             // Spacing :)
-                            ui.label(RichText::new("    Duro Console").font(FontId::proportional(14.0)).color(LIGHTTEAL)).on_hover_text("by Ardura!");
+                            ui.label(RichText::new("    Subhoofer").font(FontId::proportional(14.0)).color(A_TEAL)).on_hover_text("by Ardura!");
 
                             // Peak Meters
                             let in_meter = util::gain_to_db(in_meter.load(std::sync::atomic::Ordering::Relaxed));
@@ -250,8 +268,8 @@ impl Plugin for Gain {
                             let in_meter_normalized = (in_meter + 60.0) / 60.0;
                             ui.allocate_space(egui::Vec2::splat(2.0));
                             let mut in_meter_obj = db_meter::DBMeter::new(in_meter_normalized).text(in_meter_text);
-                            in_meter_obj.set_background_color(METERBACKGROUND);
-                            in_meter_obj.set_bar_color(MACARONI);
+                            in_meter_obj.set_background_color(A_DARK_GRAY);
+                            in_meter_obj.set_bar_color(A_BLUE);
                             in_meter_obj.set_border_color(Color32::BLACK);
                             ui.add(in_meter_obj);
 
@@ -264,55 +282,61 @@ impl Plugin for Gain {
                             let out_meter_normalized = (out_meter + 60.0) / 60.0;
                             ui.allocate_space(egui::Vec2::splat(2.0));
                             let mut out_meter_obj = db_meter::DBMeter::new(out_meter_normalized).text(out_meter_text);
-                            out_meter_obj.set_background_color(METERBACKGROUND);
-                            out_meter_obj.set_bar_color(MACARONI);
+                            out_meter_obj.set_background_color(A_DARK_GRAY);
+                            out_meter_obj.set_bar_color(A_BLUE);
                             out_meter_obj.set_border_color(Color32::BLACK);
                             ui.add(out_meter_obj);
 
                             ui.horizontal(|ui| {
-                                let knob_size = 44.0;
+                                let knob_size = 38.0;
+                                ui.vertical_centered(|ui| {
+                                    let mut gain_knob = ui_knob::ArcKnob::for_param(&params.free_gain, setter, knob_size);
+                                    gain_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
+                                    gain_knob.set_fill_color(A_WHITE);
+                                    gain_knob.set_line_color(A_TEAL);
+                                    ui.add(gain_knob);
 
-                                let mut gain_knob = ui_knob::ArcKnob::for_param(&params.free_gain, setter, knob_size);
-                                gain_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                gain_knob.set_fill_color(TEAL);
-                                gain_knob.set_line_color(LIGHTTEAL);
-                                ui.add(gain_knob);
+                                    let mut sat_type_knob = ui_knob::ArcKnob::for_param(&params.hoof_hardness, setter, knob_size);
+                                    sat_type_knob.preset_style(ui_knob::KnobStyle::SmallSmallOutline);
+                                    sat_type_knob.set_fill_color(A_BLUE);
+                                    sat_type_knob.set_line_color(A_PLATINUM);
+                                    ui.add(sat_type_knob);
+                                });
 
-                                let mut sat_type_knob = ui_knob::ArcKnob::for_param(&params.sat_type, setter, knob_size);
-                                sat_type_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                sat_type_knob.set_fill_color(MACARONI);
-                                sat_type_knob.set_line_color(ORANGE);
-                                ui.add(sat_type_knob);
+                                ui.vertical_centered(|ui| {
+                                    let mut threshold_knob = ui_knob::ArcKnob::for_param(&params.sub_gain, setter, knob_size + 8.0);
+                                    threshold_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
+                                    threshold_knob.set_fill_color(A_BLUE);
+                                    threshold_knob.set_line_color(A_PLATINUM);
+                                    ui.add(threshold_knob);
+                                
+                                    let mut drive_knob = ui_knob::ArcKnob::for_param(&params.sub_drive, setter, knob_size + 8.0);
+                                    drive_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
+                                    drive_knob.set_fill_color(A_BLUE);
+                                    drive_knob.set_line_color(A_PLATINUM);
+                                    ui.add(drive_knob);
 
-                                let mut threshold_knob = ui_knob::ArcKnob::for_param(&params.threshold, setter, knob_size);
-                                threshold_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
-                                threshold_knob.set_fill_color(MACARONI);
-                                threshold_knob.set_line_color(ORANGE);
-                                ui.add(threshold_knob);
-    
-                                let mut drive_knob = ui_knob::ArcKnob::for_param(&params.drive, setter, knob_size);
-                                drive_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
-                                drive_knob.set_fill_color(MACARONI);
-                                drive_knob.set_line_color(ORANGE);
-                                ui.add(drive_knob);
+                                    let mut console_knob = ui_knob::ArcKnob::for_param(&params.harmonics, setter, knob_size + 8.0);
+                                    console_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
+                                    console_knob.set_fill_color(A_BLUE);
+                                    console_knob.set_line_color(A_PLATINUM);
+                                    ui.add(console_knob);
+                                });
 
-                                let mut console_knob = ui_knob::ArcKnob::for_param(&params.console_type, setter, knob_size);
-                                console_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                console_knob.set_fill_color(MACARONI);
-                                console_knob.set_line_color(ORANGE);
-                                ui.add(console_knob);
-    
-                                let mut output_knob = ui_knob::ArcKnob::for_param(&params.output_gain, setter, knob_size);
-                                output_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                output_knob.set_fill_color(TEAL);
-                                output_knob.set_line_color(LIGHTTEAL);
-                                ui.add(output_knob);
-   
-                                let mut dry_wet_knob = ui_knob::ArcKnob::for_param(&params.dry_wet, setter, knob_size);
-                                dry_wet_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
-                                dry_wet_knob.set_fill_color(TEAL);
-                                dry_wet_knob.set_line_color(LIGHTTEAL);
-                                ui.add(dry_wet_knob);
+                                ui.vertical_centered(|ui| {
+                                    let mut output_knob = ui_knob::ArcKnob::for_param(&params.output_gain, setter, knob_size);
+                                    output_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
+                                    output_knob.set_fill_color(A_WHITE);
+                                    output_knob.set_line_color(A_TEAL);
+                                    ui.add(output_knob);
+                                
+                                    let mut dry_wet_knob = ui_knob::ArcKnob::for_param(&params.dry_wet, setter, knob_size);
+                                    dry_wet_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
+                                    dry_wet_knob.set_fill_color(A_WHITE);
+                                    dry_wet_knob.set_line_color(A_TEAL);
+                                    ui.add(dry_wet_knob);
+                                
+                                });
                             });
                         });
                     });
@@ -343,34 +367,54 @@ impl Plugin for Gain {
         //widgets::ParamEvent
         // Buffer level
         for channel_samples in buffer.iter_samples() {
-            let mut out_amplitude = 0.0;
-            let mut in_amplitude = 0.0;
-            let mut processed_sample;
+            let mut out_amplitude: f32 = 0.0;
+            let mut in_amplitude: f32 = 0.0;
+            let mut processed_sample: f32;
             let num_samples = channel_samples.len();
 
-            let gain = util::gain_to_db(self.params.free_gain.smoothed.next());
+            let gain: f32 = util::gain_to_db(self.params.free_gain.smoothed.next());
             let mut num_gain: f32;
-            let drive = self.params.drive.smoothed.next();
-            let threshold = self.params.threshold.smoothed.next();
-            let output_gain = self.params.output_gain.smoothed.next();
-            let sat_type = self.params.sat_type.value();
-            let console_type = self.params.console_type.value();
-            let dry_wet = self.params.dry_wet.value();
+            let hoof_hardness: f32 = self.params.hoof_hardness.smoothed.next();
+            let sub_gain: f32 = self.params.sub_gain.smoothed.next();
+            let output_gain: f32 = self.params.output_gain.smoothed.next();
+            let sub_drive: f32 = self.params.sub_drive.smoothed.next();
+            let harmonics: f32 = self.params.harmonics.smoothed.next();
+            let dry_wet: f32 = self.params.dry_wet.value();
 
-            // Create the compressor object
-            self.console.update_vals(threshold,drive,console_type,_context.transport().sample_rate);
+            let fake_random: f32 = 0.83;
+            let inv_fake_random: f32 = 1.0 - fake_random;
+
+            // Scale the head bump freqeuncy for Subhoof
+            let sample_rate: f32 = _context.transport().sample_rate;
+            let mut overall_scale: f32 = 1.0;
+            overall_scale /= 44100.0;
+            overall_scale *= sample_rate;
 
             for sample in channel_samples {
                 num_gain = gain;
-                
-                //nih_log!("{}  {}",gain,num_gain);
-                
                 *sample *= util::db_to_gain(num_gain);
-                
                 in_amplitude += *sample;
 
+                ///////////////////////////////////////////////////////////////////////
                 // Perform processing on the sample
-                processed_sample = self.console.duro_process(*sample, sat_type, console_type);
+                
+                // Normalize really small values
+                if sample.abs() < 1.18e-23 { *sample = 0.1 * 1.18e-17; }
+
+                // Sub voicing variables
+                let sub_headbump_freq: f32 = (((hoof_hardness) * 0.1) + 0.02) / overall_scale;
+                let sub_iir: f32 = sub_headbump_freq / 44.1;
+                // BassGain = sub_drive
+
+                // Sub drive samples
+                lp = *sample / 2048.0;
+                iirDriveSampleA = (iirDriveSampleA * (1.0 - sub_headbump_freq)) + (lp * sub_headbump_freq);
+                lp = iirDriveSampleA;
+
+
+
+                processed_sample = 0.0;
+                ///////////////////////////////////////////////////////////////////////
 
                 // Calculate dry/wet mix (no compression but saturation possible)
                 let wet_gain = dry_wet;
@@ -435,7 +479,7 @@ impl ClapPlugin for Gain {
 }
 
 impl Vst3Plugin for Gain {
-    const VST3_CLASS_ID: [u8; 16] = *b"DuroConsoleAAAAA";
+    const VST3_CLASS_ID: [u8; 16] = *b"SubhooferAAAAAAA";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Distortion];
 }
