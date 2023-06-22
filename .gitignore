@@ -397,3 +397,5 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 /vstsdk2.4
+target/*
+target/.rustc_info.json
