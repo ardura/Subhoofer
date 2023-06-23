@@ -32,6 +32,10 @@ pub struct Gain {
     out_meter_decay_weight: f32,
 
     // "header" variables from C++ class
+    prev_processed_in_r: f32,
+    prev_processed_out_r: f32,
+    prev_processed_in_l: f32,
+    prev_processed_out_l: f32,
     lp: f32,
     iir_head_bump_a: f32,
     iir_head_bump_b: f32,
@@ -164,6 +168,10 @@ impl Default for Gain {
             iir_sample_x: 0.0,
             iir_sample_y: 0.0,
             iir_sample_z: 0.0,
+            prev_processed_in_r: 0.0,
+            prev_processed_out_r: 0.0,
+            prev_processed_in_l: 0.0,
+            prev_processed_out_l: 0.0,
             sub_iir: 0.0,
             sub_octave: false,
             was_negative: false,
@@ -407,7 +415,7 @@ impl Plugin for Gain {
                             ui.add(out_meter_obj);
 
                             ui.horizontal(|ui| {
-                                let knob_size = 36.0;
+                                let knob_size = 40.0;
                                 ui.vertical(|ui| {
                                     let mut gain_knob = ui_knob::ArcKnob::for_param(&params.free_gain, setter, knob_size);
                                     gain_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
@@ -441,7 +449,8 @@ impl Plugin for Gain {
                                     harmonics_knob.set_line_color(A_PLATINUM);
                                     ui.add(harmonics_knob);
 
-                                    ui.add(widgets::ParamSlider::for_param(&params.sub_algorithm, setter));
+                                    ui.label("Algorithm");
+                                    ui.add(widgets::ParamSlider::for_param(&params.sub_algorithm, setter).with_width(30.0));
                                 });
 
                                 ui.vertical(|ui| {
@@ -492,14 +501,15 @@ impl Plugin for Gain {
 
         //widgets::ParamEvent
         // Buffer level
-        for channel_samples in buffer.iter_samples() {
+        for mut channel_samples in buffer.iter_samples() {
             let mut out_amplitude: f32 = 0.0;
             let mut in_amplitude: f32 = 0.0;
-            let mut processed_sample: f32 = 0.0;
+            let mut processed_sample_l: f32 = 0.0;
+            let mut processed_sample_r: f32 = 0.0;
             let num_samples = channel_samples.len();
 
             let gain: f32 = util::gain_to_db(self.params.free_gain.smoothed.next());
-            let mut num_gain: f32;
+            let num_gain: f32;
             let hoof_hardness: f32 = self.params.hoof_hardness.smoothed.next();
             let bass_gain: f32 = self.params.bass_gain.smoothed.next();
             let sub_gain: f32 = self.params.sub_gain.smoothed.next();
@@ -518,194 +528,228 @@ impl Plugin for Gain {
             overall_scale /= 44100.0;
             overall_scale *= sample_rate;
 
-            for sample in channel_samples {
-                num_gain = gain;
-                *sample *= util::db_to_gain(num_gain);
-                in_amplitude += *sample;
+            // Split left and right same way original subhoofer did
+            let mut in_l = *channel_samples.get_mut(0).unwrap();
+            let mut in_r = *channel_samples.get_mut(1).unwrap();
 
-                ///////////////////////////////////////////////////////////////////////
-                // Perform processing on the sample
+            num_gain = gain;
+            in_l *= util::db_to_gain(num_gain);
+            in_r *= util::db_to_gain(num_gain);
+            in_amplitude += in_l + in_r;
 
-                // Normalize really small values
-                if sample.abs() < 1.18e-23 { *sample = 0.1 * 1.18e-17; }
+            ///////////////////////////////////////////////////////////////////////
+            // Perform processing on the sample
 
-                // Sub voicing variables
-                let sub_headbump_freq: f32 = (((hoof_hardness) * 0.1) + 0.02) / overall_scale;
-                self.sub_iir = sub_headbump_freq / 44.1;
-                // BassGain = sub_drive
+            // Normalize really small values
+            if in_l.abs() < 1.18e-23 { in_l = 0.1 * 1.18e-17; }
+            if in_r.abs() < 1.18e-23 { in_r = 0.1 * 1.18e-17; }
 
-                // Sub drive samples
-                self.lp = *sample / 2048.0;
-                self.iir_drive_sample_a = (self.iir_drive_sample_a * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
-                self.lp = self.iir_drive_sample_a;
+            // Sub voicing variables
+            let sub_headbump_freq: f32 = (((hoof_hardness) * 0.1) + 0.02) / overall_scale;
+            self.sub_iir = sub_headbump_freq / 44.1;
+            // BassGain = sub_drive
 
-                if sub_algorithm == 1
+            // Sub drive samples
+            self.lp = (in_l + in_r) / 2048.0;
+            self.iir_drive_sample_a = (self.iir_drive_sample_a * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
+            self.lp = self.iir_drive_sample_a;
+
+            if sub_algorithm == 1
+            {
+                // Gate from airwindows
+                self.osc_gate += (self.lp * 10.0).abs();
+                self.osc_gate -= 0.001;
+                if self.osc_gate > 1.0 {self.osc_gate = 1.0;}
+                if self.osc_gate < 0.0 {self.osc_gate = 0.0;}
+                //got a value that only goes down low when there's silence or near silence on input
+                let clamp = (1.0 - self.osc_gate) * 0.00001;
+
+                // Figure out our zero crossing
+                if self.lp > 0.0
                 {
-                    // Gate from airwindows
-                    self.osc_gate += (self.lp * 10.0).abs();
-                    self.osc_gate -= 0.001;
-                    if self.osc_gate > 1.0 {self.osc_gate = 1.0;}
-                    if self.osc_gate < 0.0 {self.osc_gate = 0.0;}
-                    //got a value that only goes down low when there's silence or near silence on input
-                    let clamp = (1.0 - self.osc_gate) * 0.00001;
-
-                    // Figure out our zero crossing
-                    if self.lp > 0.0
+                    // We are on top of zero crossing
+                    if self.was_negative
                     {
-                        // We are on top of zero crossing
-                        if self.was_negative
-                        {
-                            self.sub_octave = !self.sub_octave;
-                            self.was_negative = false;
-                        }
+                        self.sub_octave = !self.sub_octave;
+                        self.was_negative = false;
                     }
-                    else {
-                        // On bottom of zero crossing
-                        self.was_negative = true;
+                }
+                else {
+                    // On bottom of zero crossing
+                    self.was_negative = true;
+                }
+
+                self.iir_sample_a = (self.iir_sample_a * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_a;
+			    self.iir_sample_b = (self.iir_sample_b * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_b;
+			    self.iir_sample_c = (self.iir_sample_c * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_c;
+			    self.iir_sample_d = (self.iir_sample_d * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_d;
+			    self.iir_sample_e = (self.iir_sample_e * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_e;
+			    self.iir_sample_f = (self.iir_sample_f * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_f;
+			    self.iir_sample_g = (self.iir_sample_g * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_g;
+			    self.iir_sample_h = (self.iir_sample_h * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_h;
+			    self.iir_sample_i = (self.iir_sample_i * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_i;
+			    self.iir_sample_j = (self.iir_sample_j * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_j;
+			    self.iir_sample_k = (self.iir_sample_k * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_k;
+			    self.iir_sample_l = (self.iir_sample_l * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_l;
+			    self.iir_sample_m = (self.iir_sample_m * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_m;
+			    self.iir_sample_n = (self.iir_sample_n * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_n;
+			    self.iir_sample_o = (self.iir_sample_o * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_o;
+			    self.iir_sample_p = (self.iir_sample_p * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_p;
+			    self.iir_sample_q = (self.iir_sample_q * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_q;
+			    self.iir_sample_r = (self.iir_sample_r * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_r;
+			    self.iir_sample_s = (self.iir_sample_s * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_s;
+			    self.iir_sample_t = (self.iir_sample_t * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_t;
+			    self.iir_sample_u = (self.iir_sample_u * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_u;
+			    self.iir_sample_v = (self.iir_sample_v * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_v;
+
+                let mut head_bump: f32;
+                match self.bass_flip_counter
+                {
+                    1 => {
+                        self.iir_head_bump_a += self.lp * bass_gain;
+				        self.iir_head_bump_a -= self.iir_head_bump_a * self.iir_head_bump_a * self.iir_head_bump_a * sub_headbump_freq;
+				        self.iir_head_bump_a = (inv_fake_random * self.iir_head_bump_a) + (fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
+				        if self.iir_head_bump_a > 0.0 { self.iir_head_bump_a -= clamp; }
+				        if self.iir_head_bump_a < 0.0 { self.iir_head_bump_a += clamp; }
+				        head_bump = self.iir_head_bump_a;
                     }
-
-                    self.iir_sample_a = (self.iir_sample_a * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_a;
-			        self.iir_sample_b = (self.iir_sample_b * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_b;
-			        self.iir_sample_c = (self.iir_sample_c * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_c;
-			        self.iir_sample_d = (self.iir_sample_d * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_d;
-			        self.iir_sample_e = (self.iir_sample_e * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_e;
-			        self.iir_sample_f = (self.iir_sample_f * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_f;
-			        self.iir_sample_g = (self.iir_sample_g * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_g;
-			        self.iir_sample_h = (self.iir_sample_h * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_h;
-			        self.iir_sample_i = (self.iir_sample_i * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_i;
-			        self.iir_sample_j = (self.iir_sample_j * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_j;
-			        self.iir_sample_k = (self.iir_sample_k * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_k;
-			        self.iir_sample_l = (self.iir_sample_l * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_l;
-			        self.iir_sample_m = (self.iir_sample_m * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_m;
-			        self.iir_sample_n = (self.iir_sample_n * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_n;
-			        self.iir_sample_o = (self.iir_sample_o * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_o;
-			        self.iir_sample_p = (self.iir_sample_p * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_p;
-			        self.iir_sample_q = (self.iir_sample_q * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_q;
-			        self.iir_sample_r = (self.iir_sample_r * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_r;
-			        self.iir_sample_s = (self.iir_sample_s * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_s;
-			        self.iir_sample_t = (self.iir_sample_t * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_t;
-			        self.iir_sample_u = (self.iir_sample_u * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_u;
-			        self.iir_sample_v = (self.iir_sample_v * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_v;
-
-                    let mut head_bump: f32;
-                    match self.bass_flip_counter
-                    {
-                        1 => {
-                            self.iir_head_bump_a += (self.lp * bass_gain);
-					        self.iir_head_bump_a -= (self.iir_head_bump_a * self.iir_head_bump_a * self.iir_head_bump_a * sub_headbump_freq);
-					        self.iir_head_bump_a = (inv_fake_random * self.iir_head_bump_a) + (fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
-					        if self.iir_head_bump_a > 0.0 { self.iir_head_bump_a -= clamp; }
-					        if self.iir_head_bump_a < 0.0 { self.iir_head_bump_a += clamp; }
-					        head_bump = self.iir_head_bump_a;
-                        }
-                        2 => {
-                            self.iir_head_bump_b += (self.lp * bass_gain);
-					        self.iir_head_bump_b -= (self.iir_head_bump_b * self.iir_head_bump_b * self.iir_head_bump_b * sub_headbump_freq);
-					        self.iir_head_bump_b = (fake_random * self.iir_head_bump_a) + (inv_fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
-					        if self.iir_head_bump_b > 0.0 { self.iir_head_bump_b -= clamp; }
-					        if self.iir_head_bump_b < 0.0 { self.iir_head_bump_b += clamp; }
-					        head_bump = self.iir_head_bump_b;
-                        }
-                        3 => {
-                            self.iir_head_bump_c += (self.lp * bass_gain);
-					        self.iir_head_bump_c -= (self.iir_head_bump_c * self.iir_head_bump_c * self.iir_head_bump_c * sub_headbump_freq);
-					        self.iir_head_bump_c = (fake_random * self.iir_head_bump_a) + (inv_fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
-					        if self.iir_head_bump_c > 0.0 { self.iir_head_bump_c -= clamp; }
-					        if self.iir_head_bump_c < 0.0 { self.iir_head_bump_c += clamp; }
-					        head_bump = self.iir_head_bump_c;
-                        }
-                        _ => unreachable!()
+                    2 => {
+                        self.iir_head_bump_b += self.lp * bass_gain;
+				        self.iir_head_bump_b -= self.iir_head_bump_b * self.iir_head_bump_b * self.iir_head_bump_b * sub_headbump_freq;
+				        self.iir_head_bump_b = (fake_random * self.iir_head_bump_a) + (inv_fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
+				        if self.iir_head_bump_b > 0.0 { self.iir_head_bump_b -= clamp; }
+				        if self.iir_head_bump_b < 0.0 { self.iir_head_bump_b += clamp; }
+				        head_bump = self.iir_head_bump_b;
                     }
-
-                    // Calculate drive samples based off the processing so far
-                    self.iir_sample_w = (self.iir_sample_w * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_w;
-			        self.iir_sample_x = (self.iir_sample_x * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_x;
-
-                    // Create SubBump sample from our head bump to modify further
-			        let mut sub_bump: f32 = head_bump;
-			        self.iir_sample_y = (self.iir_sample_y * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);    sub_bump -= self.iir_sample_y;
-
-                    // Calculate sub drive samples based off what we've done so far		
-                    self.iir_drive_sample_c = (self.iir_drive_sample_c * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_c;
-                    self.iir_drive_sample_d = (self.iir_drive_sample_d * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_d;
-
-                    // Flip the bump sample per sub octave for half-freq
-                    sub_bump = sub_bump.abs();
-                    sub_bump = if self.sub_octave == false { -sub_bump } else { sub_bump };
-
-                    // Note the randD/invrandD is what is flipping from positive to negative here
-			        // This means bflip = 1 A gets inverted
-			        // This means bflip = 2 B gets inverted
-			        // This means bflip = 3 C gets inverted
-			        // This creates a lower octave using  multiplication depending on sample
-                    match self.bass_flip_counter
-                    {
-                        1 => {
-                            self.iir_sub_bump_a += sub_bump * sub_gain;
-                            self.iir_sub_bump_a -= (self.iir_sub_bump_a * self.iir_sub_bump_a * self.iir_sub_bump_a * sub_headbump_freq);
-                            self.iir_sub_bump_a = (inv_fake_random * self.iir_sub_bump_a) + (fake_random * self.iir_sub_bump_b) + (fake_random * self.iir_sub_bump_c);
-                            if self.iir_sub_bump_a > 0.0 { self.iir_sub_bump_a -= clamp; }
-                            if self.iir_sub_bump_a < 0.0 { self.iir_sub_bump_a += clamp; }
-                            sub_bump = self.iir_sub_bump_a;
-                        }
-                        2 => {
-                            self.iir_sub_bump_b += sub_bump * sub_gain;
-                            self.iir_sub_bump_b -= (self.iir_sub_bump_b * self.iir_sub_bump_b * self.iir_sub_bump_b * sub_headbump_freq);
-                            self.iir_sub_bump_b = (fake_random * self.iir_sub_bump_a) + (inv_fake_random * self.iir_sub_bump_b) + (fake_random * self.iir_sub_bump_c);
-                            if self.iir_sub_bump_b > 0.0 { self.iir_sub_bump_b -= clamp; }
-                            if self.iir_sub_bump_b < 0.0 { self.iir_sub_bump_b += clamp; }
-                            sub_bump = self.iir_sub_bump_b;
-                        }
-                        3 => {
-                            self.iir_sub_bump_c += sub_bump * sub_gain;
-                            self.iir_sub_bump_c -= (self.iir_sub_bump_c * self.iir_sub_bump_c * self.iir_sub_bump_c * sub_headbump_freq);
-                            self.iir_sub_bump_c = (fake_random * self.iir_sub_bump_a) + (fake_random * self.iir_sub_bump_b) + (inv_fake_random * self.iir_sub_bump_c);
-                            if self.iir_sub_bump_c > 0.0 { self.iir_sub_bump_c -= clamp; }
-                            if self.iir_sub_bump_c < 0.0 { self.iir_sub_bump_c += clamp; }
-                            sub_bump = self.iir_sub_bump_c;
-                        }
-                        _ => unreachable!()
+                    3 => {
+                        self.iir_head_bump_c += self.lp * bass_gain;
+				        self.iir_head_bump_c -= self.iir_head_bump_c * self.iir_head_bump_c * self.iir_head_bump_c * sub_headbump_freq;
+				        self.iir_head_bump_c = (fake_random * self.iir_head_bump_a) + (inv_fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
+				        if self.iir_head_bump_c > 0.0 { self.iir_head_bump_c -= clamp; }
+				        if self.iir_head_bump_c < 0.0 { self.iir_head_bump_c += clamp; }
+				        head_bump = self.iir_head_bump_c;
                     }
+                    _ => unreachable!()
+                }
+                // Calculate drive samples based off the processing so far
+                self.iir_sample_w = (self.iir_sample_w * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_w;
+			    self.iir_sample_x = (self.iir_sample_x * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_x;
+                
+                // Create SubBump sample from our head bump to modify further
+			    let mut sub_bump: f32 = head_bump;
+			    self.iir_sample_y = (self.iir_sample_y * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);    sub_bump -= self.iir_sample_y;
+                
+                // Calculate sub drive samples based off what we've done so far		
+                self.iir_drive_sample_c = (self.iir_drive_sample_c * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_c;
+                self.iir_drive_sample_d = (self.iir_drive_sample_d * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_d;
+                
+                // Flip the bump sample per sub octave for half-freq
+                sub_bump = sub_bump.abs();
+                sub_bump = if self.sub_octave == false { -sub_bump } else { sub_bump };
+                // Note the randD/invrandD is what is flipping from positive to negative here
+			    // This means bflip = 1 A gets inverted
+			    // This means bflip = 2 B gets inverted
+			    // This means bflip = 3 C gets inverted
+			    // This creates a lower octave using  multiplication depending on sample
+                match self.bass_flip_counter
+                {
+                    1 => {
+                        self.iir_sub_bump_a += sub_bump * sub_gain;
+                        self.iir_sub_bump_a -= self.iir_sub_bump_a * self.iir_sub_bump_a * self.iir_sub_bump_a * sub_headbump_freq;
+                        self.iir_sub_bump_a = (inv_fake_random * self.iir_sub_bump_a) + (fake_random * self.iir_sub_bump_b) + (fake_random * self.iir_sub_bump_c);
+                        if self.iir_sub_bump_a > 0.0 { self.iir_sub_bump_a -= clamp; }
+                        if self.iir_sub_bump_a < 0.0 { self.iir_sub_bump_a += clamp; }
+                        sub_bump = self.iir_sub_bump_a;
+                    }
+                    2 => {
+                        self.iir_sub_bump_b += sub_bump * sub_gain;
+                        self.iir_sub_bump_b -= self.iir_sub_bump_b * self.iir_sub_bump_b * self.iir_sub_bump_b * sub_headbump_freq;
+                        self.iir_sub_bump_b = (fake_random * self.iir_sub_bump_a) + (inv_fake_random * self.iir_sub_bump_b) + (fake_random * self.iir_sub_bump_c);
+                        if self.iir_sub_bump_b > 0.0 { self.iir_sub_bump_b -= clamp; }
+                        if self.iir_sub_bump_b < 0.0 { self.iir_sub_bump_b += clamp; }
+                        sub_bump = self.iir_sub_bump_b;
+                    }
+                    3 => {
+                        self.iir_sub_bump_c += sub_bump * sub_gain;
+                        self.iir_sub_bump_c -= self.iir_sub_bump_c * self.iir_sub_bump_c * self.iir_sub_bump_c * sub_headbump_freq;
+                        self.iir_sub_bump_c = (fake_random * self.iir_sub_bump_a) + (fake_random * self.iir_sub_bump_b) + (inv_fake_random * self.iir_sub_bump_c);
+                        if self.iir_sub_bump_c > 0.0 { self.iir_sub_bump_c -= clamp; }
+                        if self.iir_sub_bump_c < 0.0 { self.iir_sub_bump_c += clamp; }
+                        sub_bump = self.iir_sub_bump_c;
+                    }
+                    _ => unreachable!()
+                }
+                // Resample to reduce the sub bump further
+                self.iir_sample_z = (self.iir_sample_z * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);
+                sub_bump = self.iir_sample_z;
+                self.iir_drive_sample_e = (self.iir_drive_sample_e * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
+                sub_bump = self.iir_drive_sample_e;
+                self.iir_drive_sample_f = (self.iir_drive_sample_f * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
+                sub_bump = self.iir_drive_sample_f;
+                
+                // Add in to original signal
+                processed_sample_l = in_l + (sub_bump * sub_gain);
+                processed_sample_r = in_r + (sub_bump * sub_gain);
 
-                    // Resample to reduce the sub bump further
-                    self.iir_sample_z = (self.iir_sample_z * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);
-                    sub_bump = self.iir_sample_z;
-                    self.iir_drive_sample_e = (self.iir_drive_sample_e * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
-                    sub_bump = self.iir_drive_sample_e;
-                    self.iir_drive_sample_f = (self.iir_drive_sample_f * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
-                    sub_bump = self.iir_drive_sample_f;
-
-                    processed_sample = sub_bump * sub_gain;
-
-                    // Increment/change the bass_flip_counter
-                    self.bass_flip_counter += 1;
-                    self.bass_flip_counter = 
-                        if self.bass_flip_counter < 1 || self.bass_flip_counter > 3 { 1 } 
-                        else { self.bass_flip_counter };
+                // Increment/change the bass_flip_counter
+                self.bass_flip_counter += 1;
+                self.bass_flip_counter = 
+                    if self.bass_flip_counter < 1 || self.bass_flip_counter > 3 { 1 } 
+                    else { self.bass_flip_counter };
                 }
                 else if sub_algorithm == 2
                 {
                     // TODO: Pitch shift
-                    processed_sample = 0.0;
+                    
                 }
                 else if sub_algorithm == 3
                 {
-                    processed_sample = 0.0;
+                    
                     // TODO: FFT Find lowest Freq
                 }
+
+                // Remove DC Offset with single pole HP
+                let hp_b0: f32 = 1.0;
+                let hp_b1: f32 = -1.0;
+                let hp_a1: f32 = -0.995;
+        
+                // Calculated below by Ardura in advance!
+                // double sqrt2 = 1.41421356237;
+                // double corner_frequency = 5.0 / sqrt2;
+                // double hp_gain = 1 / sqrt(1 + (5.0 / (corner_frequency)) ^ 2);
+                let hp_gain = 0.577350269190468;
+        
+                // Apply the 1 pole HP to left side
+                processed_sample_l = hp_gain * processed_sample_l;
+                let temp_sample: f32 = hp_b0 * processed_sample_l + hp_b1 * self.prev_processed_in_l - hp_a1 * self.prev_processed_out_l;
+                self.prev_processed_in_l = processed_sample_l;
+                self.prev_processed_out_l = temp_sample;
+                processed_sample_l = temp_sample;
+
+                // Apply the 1 pole HP to right side
+                processed_sample_r = hp_gain * processed_sample_r;
+                let temp_sample: f32 = hp_b0 * processed_sample_r + hp_b1 * self.prev_processed_in_r - hp_a1 * self.prev_processed_out_r;
+                self.prev_processed_in_r = processed_sample_r;
+                self.prev_processed_out_r = temp_sample;
+                processed_sample_r = temp_sample;
                 
                 ///////////////////////////////////////////////////////////////////////
 
                 // Calculate dry/wet mix (no compression but saturation possible)
-                let wet_gain = dry_wet;
-                let dry_gain = 1.0 - dry_wet;
-                processed_sample = *sample * dry_gain + processed_sample * wet_gain;
+                let wet_gain: f32 = dry_wet;
+                let dry_gain: f32 = 1.0 - dry_wet;
+                processed_sample_l = in_l * dry_gain + processed_sample_l * wet_gain;
+                processed_sample_r = in_r * dry_gain + processed_sample_r * wet_gain;
 
                 // get the output amplitude here
-                processed_sample = processed_sample*output_gain;
-                *sample = processed_sample;
-                out_amplitude += processed_sample;
-            }
+                processed_sample_l = processed_sample_l*output_gain;
+                processed_sample_r = processed_sample_r*output_gain;
+                out_amplitude += processed_sample_l + processed_sample_r;
+
+                // Assign back so we can output our processed sounds
+                *channel_samples.get_mut(0).unwrap() = processed_sample_l;
+                *channel_samples.get_mut(1).unwrap() = processed_sample_r;
+
 
             // To save resources, a plugin can (and probably should!) only perform expensive
             // calculations that are only displayed on the GUI while the GUI is open
