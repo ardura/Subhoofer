@@ -92,6 +92,12 @@ pub struct Gain {
     in_meter: Arc<AtomicF32>,
 }
 
+fn dc_block(input: f32, prev_output: &mut f32, alpha: f32) -> f32 {
+    let output = input - *prev_output + alpha * input;
+    *prev_output = output;
+    output
+}
+
 // Modified function from Duro Console for different behavior - hoof hardness
 fn chebyshev_tape(sample: f32, drive: f32) -> f32 {
     let dry = 1.0 - drive;
@@ -113,14 +119,15 @@ fn chebyshev_tape(sample: f32, drive: f32) -> f32 {
 
 // Modified tape saturation using transfer function from Duro Console
 fn tape_saturation(input_signal: f32, drive: f32) -> f32 {
-    let idrive = if drive == 0.0 {0.0001} else {drive};
+    if drive == 0.0 { return 0.0; }
+    let idrive = drive;
     // Define the transfer curve for the tape saturation effect
     let transfer = |x: f32| -> f32 {
         (x * idrive).tanh()
     };
     // Apply the transfer curve to the input sample
     let output_sample = transfer(input_signal);
-    output_sample
+    output_sample - input_signal
 }
 
 // Primary 3 Harmonics
@@ -131,12 +138,17 @@ fn p3_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     for j in 1..=num_harmonics {
         let harmonic: i32 = 2 * j as i32 - 1;
         if harmonic % 2 == 1 {
-            let harmonic_component: f32 = harmonic_strength * (signal * harmonic as f32).sin() - signal; // maybe * harmonic stringth here?
+            let harmonic_component: f32 = harmonic_strength * (signal * harmonic as f32).sin(); // maybe signal * harmonic stringth here?
             summed += harmonic_component;
         }
     }
-
-    summed/3.0
+    if harmonic_strength > 0.0
+    {
+        summed - signal
+    }
+    else {
+        0.0
+    }
 }
 
 // Modified odd saturation from Duro Console to mimic RBass
@@ -146,11 +158,17 @@ fn all_h_saturation(signal: f32, harmonic_strength: f32) -> f32 {
 
     for j in 1..=num_harmonics {
         // Let harmonics get stronger the more we go with * j/2.0
-        let harmonic_component: f32 = harmonic_strength * (signal * j as f32).cos() - signal;
+        let harmonic_component: f32 = harmonic_strength * (signal * j as f32).cos();
         summed += harmonic_component;
     }
-    // Divide this by harmonic addition amount
-    summed/7.0
+
+    if harmonic_strength > 0.0
+    {
+        summed - signal
+    }
+    else {
+        0.0
+    }
 }
 
 #[derive(Params)]
@@ -596,7 +614,8 @@ impl Plugin for Gain {
             // BassGain = sub_drive
 
             // Sub drive samples
-            self.lp = (in_l + in_r) / 2048.0;
+            // self.lp is our lowpassed center signal
+            self.lp = (in_l + in_r) / 2.0;
             self.iir_drive_sample_a = (self.iir_drive_sample_a * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
             self.lp = self.iir_drive_sample_a;
             self.iir_drive_sample_b = (self.iir_drive_sample_b * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
@@ -729,18 +748,25 @@ impl Plugin for Gain {
             self.iir_drive_sample_f = (self.iir_drive_sample_f * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
             sub_bump = self.iir_drive_sample_f;
             // Add in some lost volume from the 2048 division
-            sub_bump = sub_bump * 128.0;
+            //sub_bump = sub_bump * 128.0;
             // Calculate our final sub drive
             if sub_drive > 0.0
             {
                 sub_bump += tape_saturation(sub_bump, sub_drive);
             }
             
-            // Add in to original signal our RBass mimicry + Sub signal
+            // Add: Original signal + Harmonics + Sub signal
             match h_algorithm {
                 1 => {
-                    processed_sample_l = p3_saturation(in_l, harmonics) + (sub_bump * sub_gain);
-                    processed_sample_r = p3_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    //Need to figure out what sub_gain value is so all 0s are actually equal to dry signal
+                    if util::db_to_gain(sub_gain) == util::db_to_gain(0.0) {
+                        processed_sample_l = 0.0;
+                        processed_sample_r = 0.0;
+                    }
+                    else {
+                        processed_sample_l = p3_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                        processed_sample_r = p3_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    }
                 },
                 2 => {
                     processed_sample_l = all_h_saturation(in_l, harmonics) + (sub_bump * sub_gain);
@@ -752,20 +778,19 @@ impl Plugin for Gain {
                     let basstrim = (0.01/headfreq)+1.0;
                     let dcblock = headfreq / 320.0;
 
-
                     self.iir_sample_la += in_l * headfreq;
 		            self.iir_sample_la -= self.iir_sample_la * self.iir_sample_la * self.iir_sample_la * headfreq;
                     if self.iir_sample_la > 0.0 {self.iir_sample_la -= dcblock;} else {self.iir_sample_la += dcblock;}
                     let temp_l = self.iir_sample_la * basstrim;
                     self.iir_sample_lb = (self.iir_sample_lb * (1.0 - headfreq)) + (temp_l * headfreq);
-		            processed_sample_l = self.iir_sample_lb + in_l;
+		            processed_sample_l = self.iir_sample_lb + (sub_bump * sub_gain);
 
                     self.iir_sample_ra += in_r * headfreq;
 		            self.iir_sample_ra -= self.iir_sample_ra * self.iir_sample_ra * self.iir_sample_ra * headfreq;
                     if self.iir_sample_ra > 0.0 {self.iir_sample_ra -= dcblock;} else {self.iir_sample_ra += dcblock;}
                     let temp_r = self.iir_sample_ra * basstrim;
                     self.iir_sample_rb = (self.iir_sample_rb * (1.0 - headfreq)) + (temp_r * headfreq);
-		            processed_sample_r = self.iir_sample_rb + in_r;
+		            processed_sample_r = self.iir_sample_rb + (sub_bump * sub_gain);
                 },
                 _ => unreachable!()
             }
@@ -779,6 +804,11 @@ impl Plugin for Gain {
             self.bass_flip_counter = 
                 if self.bass_flip_counter < 1 || self.bass_flip_counter > 3 { 1 } 
                 else { self.bass_flip_counter };
+
+            /*
+            let alpha = 1.0 - (-2.0 * std::f32::consts::PI * 20.0 / sample_rate).exp2();
+            processed_sample_l = dc_block(processed_sample_l, &mut self.prev_processed_out_l, alpha);
+            processed_sample_r = dc_block(processed_sample_r, &mut self.prev_processed_out_r, alpha);
 
             // Remove DC Offset with single pole HP
             let hp_b0: f32 = 1.0;
@@ -804,14 +834,14 @@ impl Plugin for Gain {
             self.prev_processed_in_r = processed_sample_r;
             self.prev_processed_out_r = temp_sample;
             processed_sample_r = temp_sample;
+            */
 
             ///////////////////////////////////////////////////////////////////////
 
-            // Calculate dry/wet mix (no compression but saturation possible)
+            // Calculate dry/wet mix
             let wet_gain: f32 = dry_wet;
-            let dry_gain: f32 = 1.0 - dry_wet;
-            processed_sample_l = in_l * dry_gain + processed_sample_l * wet_gain;
-            processed_sample_r = in_r * dry_gain + processed_sample_r * wet_gain;
+            processed_sample_l = in_l + processed_sample_l * wet_gain;
+            processed_sample_r = in_r + processed_sample_r * wet_gain;
 
             // get the output amplitude here
             processed_sample_l = processed_sample_l*output_gain;
