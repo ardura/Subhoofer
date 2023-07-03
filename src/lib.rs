@@ -5,7 +5,6 @@ use nih_plug::{prelude::*};
 use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState, widgets};
 use std::{sync::{Arc}, ops::RangeInclusive};
 
-
 /**************************************************
  * Subhoofer v2 by Ardura
  * 
@@ -37,9 +36,6 @@ pub struct Gain {
     prev_processed_in_l: f32,
     prev_processed_out_l: f32,
     lp: f32,
-    iir_head_bump_a: f32,
-    iir_head_bump_b: f32,
-    iir_head_bump_c: f32,
     iir_sub_bump_a: f32,
     iir_sub_bump_b: f32,
     iir_sub_bump_c: f32,
@@ -107,13 +103,11 @@ fn chebyshev_tape(sample: f32, drive: f32) -> f32 {
     let x3 = x * x2;
     let x5 = x3 * x2;
     let x6 = x3 * x3;
-
     let y = x
         - 0.166667 * x3
         + 0.00833333 * x5
         - 0.000198413 * x6
         + 0.0000000238 * x6 * drive;
-
     dry * sample + (1.0 - dry) * y / (1.0 + y.abs())
 }
 
@@ -130,15 +124,58 @@ fn tape_saturation(input_signal: f32, drive: f32) -> f32 {
     output_sample - input_signal
 }
 
-// Primary 3 Harmonics
-fn p3_saturation(signal: f32, harmonic_strength: f32) -> f32 {
+fn a_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     let num_harmonics: usize = 3;
     let mut summed: f32 = 0.0;
 
     for j in 1..=num_harmonics {
-        let harmonic: i32 = 2 * j as i32 - 1;
-        if harmonic % 2 == 1 {
-            let harmonic_component: f32 = harmonic_strength * (signal * harmonic as f32).sin(); // maybe signal * harmonic stringth here?
+        match j {
+            1 => {
+                let harmonic_component: f32 = harmonic_strength * 196.0 * (signal * j as f32).cos() - signal;
+                summed += harmonic_component;
+            },
+            2 => {
+                let harmonic_component: f32 = harmonic_strength * 90.0 * (signal * j as f32).sin() - signal;
+                summed += harmonic_component;
+            },
+            3 => {
+                let harmonic_component: f32 = harmonic_strength * 1.0 * (signal * j as f32).cos() - signal;
+                summed += harmonic_component;
+            },
+            _ => {
+                let harmonic_component: f32 = harmonic_strength * 0.01 * (signal * j as f32).sin() - signal;
+                summed += harmonic_component;
+            }
+        }
+    }
+    if harmonic_strength > 0.0
+    {
+        summed
+    }
+    else {
+        0.0
+    }
+}
+
+fn b_bass_saturation(signal: f32, mut harmonic_strength: f32) -> f32 {
+    let num_harmonics: usize = 8;
+    let mut summed: f32 = 0.0;
+
+    for j in 1..=num_harmonics {
+        //let harmonic: i32 = 2 * j as i32 - 1;
+
+        if j % 2 == 1 {
+            let harmonic_component: f32 = harmonic_strength * 1.2 * (signal * j as f32).cos();
+            summed += harmonic_component;
+            continue;
+        }
+        else if j % 2 == 0 {
+            match j {
+                4 => harmonic_strength *= 0.6,
+                6 => harmonic_strength *= 5.0,
+                _ => harmonic_strength *= 1.0
+            }
+            let harmonic_component: f32 = harmonic_strength * (signal * j as f32).sin();
             summed += harmonic_component;
         }
     }
@@ -151,24 +188,18 @@ fn p3_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     }
 }
 
+
 // Modified odd saturation from Duro Console to mimic RBass
-fn all_h_saturation(signal: f32, harmonic_strength: f32) -> f32 {
+fn c_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     let num_harmonics: usize = 7;
     let mut summed: f32 = 0.0;
-
     for j in 1..=num_harmonics {
         // Let harmonics get stronger the more we go with * j/2.0
-        let harmonic_component: f32 = harmonic_strength * (signal * j as f32).cos();
+        let harmonic_component: f32 = harmonic_strength * (signal * j as f32).cos() - signal;
         summed += harmonic_component;
     }
-
-    if harmonic_strength > 0.0
-    {
-        summed - signal
-    }
-    else {
-        0.0
-    }
+    // Divide this by harmonic addition amount
+    summed/7.0
 }
 
 #[derive(Params)]
@@ -184,8 +215,8 @@ struct GainParams {
     #[id = "Hoof Hardness"]
     pub hoof_hardness: FloatParam,
 
-    #[id = "Bass Gain"]
-    pub bass_gain: FloatParam,
+    #[id = "DC Block Freq"]
+    pub dc_freq: IntParam,
 
     #[id = "Sub Gain"]
     pub sub_gain: FloatParam,
@@ -215,9 +246,6 @@ impl Default for Gain {
             in_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
             osc_gate: 0.0,
             lp: 0.0,
-            iir_head_bump_a: 0.0,
-            iir_head_bump_b: 0.0,
-            iir_head_bump_c: 0.0,
             iir_sub_bump_a: 0.0,
             iir_sub_bump_b: 0.0,
             iir_sub_bump_c: 0.0,
@@ -292,7 +320,7 @@ impl Default for GainParams {
             // Hoof Parameter
             hoof_hardness: FloatParam::new(
                 "Hoof Hardness",
-                0.05,
+                0.09,
                 FloatRange::Linear {
                     min: 0.0,
                     max: 1.0,
@@ -302,40 +330,32 @@ impl Default for GainParams {
             .with_unit(" Hardness")
             .with_value_to_string(formatters::v2s_f32_percentage(2)),
 
-            // Bass gain dB parameter
-            bass_gain: FloatParam::new(
-                "Sub Proc Gain",
-                util::db_to_gain(8.0),
-                FloatRange::Skewed {
-                    min: util::db_to_gain(0.0),
-                    max: util::db_to_gain(24.0),
-                    factor: FloatRange::gain_skew_factor(0.0, 24.0),
-                },
+            // DC Block Frew
+            dc_freq: IntParam::new(
+                "DC Block Freq",
+                20,
+                IntRange::Linear { min: 1, max: 80 },
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" Sub Proc Gain")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_unit(" DC Block Freq"),
 
             // Sub gain dB parameter
             sub_gain: FloatParam::new(
                 "Sub Gain",
-                util::db_to_gain(5.6),
-                FloatRange::Skewed {
-                    min: util::db_to_gain(0.0),
-                    max: util::db_to_gain(24.0),
-                    factor: FloatRange::gain_skew_factor(0.0, 24.0),
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 24.0,
                 },
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" dB Sub Gain")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
 
             // Sub Drive dB parameter
             sub_drive: FloatParam::new(
                 "Sub Drive",
-                0.45,
+                0.0,
                 FloatRange::Linear { min: (0.0), max: (1.0) },
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
@@ -345,8 +365,8 @@ impl Default for GainParams {
             // Harmonics Parameter
             harmonics: FloatParam::new(
                 "Harmonics",
-                0.07,
-                FloatRange::Linear { min: (0.0), max: (1.0) }
+                0.0037,
+                FloatRange::Skewed { min: 0.0, max: 1.0, factor: FloatRange::skew_factor(-2.8) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonics")
@@ -356,7 +376,7 @@ impl Default for GainParams {
             h_algorithm: IntParam::new(
                 "Harmonic Algorithm",
                 1,
-                IntRange::Linear { min: 1, max: 3 },
+                IntRange::Linear { min: 1, max: 4 },
             )
             .with_smoother(SmoothingStyle::Linear(30.0)),
 
@@ -519,11 +539,11 @@ impl Plugin for Gain {
                                 });
 
                                 ui.vertical(|ui| {
-                                    let mut bass_gain_knob = ui_knob::ArcKnob::for_param(&params.bass_gain, setter, knob_size);
-                                    bass_gain_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
-                                    bass_gain_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    bass_gain_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
-                                    ui.add(bass_gain_knob);
+                                    let mut dc_freq_knob = ui_knob::ArcKnob::for_param(&params.dc_freq, setter, knob_size);
+                                    dc_freq_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
+                                    dc_freq_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
+                                    dc_freq_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    ui.add(dc_freq_knob);
 
                                     let mut sub_gain_knob = ui_knob::ArcKnob::for_param(&params.sub_gain, setter, knob_size);
                                     sub_gain_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
@@ -573,7 +593,7 @@ impl Plugin for Gain {
             let gain: f32 = util::gain_to_db(self.params.free_gain.smoothed.next());
             let num_gain: f32;
             let hoof_hardness: f32 = self.params.hoof_hardness.smoothed.next();
-            let bass_gain: f32 = self.params.bass_gain.smoothed.next();
+            let dc_freq: i32 = self.params.dc_freq.smoothed.next();
             let sub_gain: f32 = self.params.sub_gain.smoothed.next();
             let output_gain: f32 = self.params.output_gain.smoothed.next();
             let sub_drive: f32 = self.params.sub_drive.smoothed.next();
@@ -615,7 +635,7 @@ impl Plugin for Gain {
 
             // Sub drive samples
             // self.lp is our lowpassed center signal
-            self.lp = (in_l + in_r) / 2.0;
+            self.lp = (in_l + in_r) / 4096.0;
             self.iir_drive_sample_a = (self.iir_drive_sample_a * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
             self.lp = self.iir_drive_sample_a;
             self.iir_drive_sample_b = (self.iir_drive_sample_b * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
@@ -663,35 +683,11 @@ impl Plugin for Gain {
 			self.iir_sample_t = (self.iir_sample_t * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_t;
 			self.iir_sample_u = (self.iir_sample_u * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_u;
 			self.iir_sample_v = (self.iir_sample_v * (1.0 - self.sub_iir)) + (self.lp * self.sub_iir);  self.lp -= self.iir_sample_v;
-            let mut head_bump: f32;
-            match self.bass_flip_counter
-            {
-                1 => {
-                    self.iir_head_bump_a += self.lp * bass_gain;
-			        self.iir_head_bump_a -= self.iir_head_bump_a * self.iir_head_bump_a * self.iir_head_bump_a * sub_headbump_freq;
-			        self.iir_head_bump_a = (inv_fake_random * self.iir_head_bump_a) + (fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
-			        if self.iir_head_bump_a > 0.0 { self.iir_head_bump_a -= clamp; }
-			        if self.iir_head_bump_a < 0.0 { self.iir_head_bump_a += clamp; }
-			        head_bump = self.iir_head_bump_a;
-                }
-                2 => {
-                    self.iir_head_bump_b += self.lp * bass_gain;
-			        self.iir_head_bump_b -= self.iir_head_bump_b * self.iir_head_bump_b * self.iir_head_bump_b * sub_headbump_freq;
-			        self.iir_head_bump_b = (fake_random * self.iir_head_bump_a) + (inv_fake_random * self.iir_head_bump_b) + (fake_random * self.iir_head_bump_c);
-			        if self.iir_head_bump_b > 0.0 { self.iir_head_bump_b -= clamp; }
-			        if self.iir_head_bump_b < 0.0 { self.iir_head_bump_b += clamp; }
-			        head_bump = self.iir_head_bump_b;
-                }
-                3 => {
-                    self.iir_head_bump_c += self.lp * bass_gain;
-			        self.iir_head_bump_c -= self.iir_head_bump_c * self.iir_head_bump_c * self.iir_head_bump_c * sub_headbump_freq;
-			        self.iir_head_bump_c = (fake_random * self.iir_head_bump_a) + (fake_random * self.iir_head_bump_b) + (inv_fake_random * self.iir_head_bump_c);
-			        if self.iir_head_bump_c > 0.0 { self.iir_head_bump_c -= clamp; }
-			        if self.iir_head_bump_c < 0.0 { self.iir_head_bump_c += clamp; }
-			        head_bump = self.iir_head_bump_c;
-                }
-                _ => unreachable!()
-            }
+            let mut head_bump: f32 = self.lp;
+
+            // Regain some volume now that we have sampled
+            head_bump = head_bump * 256.0;
+            
             // Calculate drive samples based off the processing so far
             self.iir_sample_w = (self.iir_sample_w * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_w;
 			self.iir_sample_x = (self.iir_sample_x * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_x;
@@ -747,8 +743,7 @@ impl Plugin for Gain {
             sub_bump = self.iir_drive_sample_e;
             self.iir_drive_sample_f = (self.iir_drive_sample_f * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);
             sub_bump = self.iir_drive_sample_f;
-            // Add in some lost volume from the 2048 division
-            //sub_bump = sub_bump * 128.0;
+
             // Calculate our final sub drive
             if sub_drive > 0.0
             {
@@ -758,39 +753,22 @@ impl Plugin for Gain {
             // Add: Original signal + Harmonics + Sub signal
             match h_algorithm {
                 1 => {
-                    //Need to figure out what sub_gain value is so all 0s are actually equal to dry signal
-                    if util::db_to_gain(sub_gain) == util::db_to_gain(0.0) {
-                        processed_sample_l = 0.0;
-                        processed_sample_r = 0.0;
-                    }
-                    else {
-                        processed_sample_l = p3_saturation(in_l, harmonics) + (sub_bump * sub_gain);
-                        processed_sample_r = p3_saturation(in_r, harmonics) + (sub_bump * sub_gain);
-                    }
+                    processed_sample_l = a_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_r = a_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
                 2 => {
-                    processed_sample_l = all_h_saturation(in_l, harmonics) + (sub_bump * sub_gain);
-                    processed_sample_r = all_h_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    // C3 signal in RBass is C3, C4, G4, C5, E5, A#5, D6, F#6
+                    processed_sample_l = b_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_r = b_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
                 3 => {
+                    processed_sample_l = c_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_r = c_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                }
+                4 => {
                     // Airwindows inspired
-                    let headfreq: f32 = 0.01+(((harmonics*0.66).powf(4.0) / sample_rate)*32000.0);
-                    let basstrim = (0.01/headfreq)+1.0;
-                    let dcblock = headfreq / 320.0;
-
-                    self.iir_sample_la += in_l * headfreq;
-		            self.iir_sample_la -= self.iir_sample_la * self.iir_sample_la * self.iir_sample_la * headfreq;
-                    if self.iir_sample_la > 0.0 {self.iir_sample_la -= dcblock;} else {self.iir_sample_la += dcblock;}
-                    let temp_l = self.iir_sample_la * basstrim;
-                    self.iir_sample_lb = (self.iir_sample_lb * (1.0 - headfreq)) + (temp_l * headfreq);
-		            processed_sample_l = self.iir_sample_lb + (sub_bump * sub_gain);
-
-                    self.iir_sample_ra += in_r * headfreq;
-		            self.iir_sample_ra -= self.iir_sample_ra * self.iir_sample_ra * self.iir_sample_ra * headfreq;
-                    if self.iir_sample_ra > 0.0 {self.iir_sample_ra -= dcblock;} else {self.iir_sample_ra += dcblock;}
-                    let temp_r = self.iir_sample_ra * basstrim;
-                    self.iir_sample_rb = (self.iir_sample_rb * (1.0 - headfreq)) + (temp_r * headfreq);
-		            processed_sample_r = self.iir_sample_rb + (sub_bump * sub_gain);
+                    processed_sample_l = tape_saturation(in_l, harmonics);
+                    processed_sample_r = tape_saturation(in_r, harmonics);
                 },
                 _ => unreachable!()
             }
@@ -805,11 +783,11 @@ impl Plugin for Gain {
                 if self.bass_flip_counter < 1 || self.bass_flip_counter > 3 { 1 } 
                 else { self.bass_flip_counter };
 
-            /*
-            let alpha = 1.0 - (-2.0 * std::f32::consts::PI * 20.0 / sample_rate).exp2();
-            processed_sample_l = dc_block(processed_sample_l, &mut self.prev_processed_out_l, alpha);
-            processed_sample_r = dc_block(processed_sample_r, &mut self.prev_processed_out_r, alpha);
-
+            
+            //let alpha = 1.0 - (-2.0 * std::f32::consts::PI * dc_freq as f32 / sample_rate).exp2();
+            //processed_sample_l = dc_block(processed_sample_l, &mut self.prev_processed_out_l, alpha);
+            //processed_sample_r = dc_block(processed_sample_r, &mut self.prev_processed_out_r, alpha);
+            
             // Remove DC Offset with single pole HP
             let hp_b0: f32 = 1.0;
             let hp_b1: f32 = -1.0;
@@ -819,7 +797,8 @@ impl Plugin for Gain {
             // double sqrt2 = 1.41421356237;
             // double corner_frequency = 5.0 / sqrt2;
             // double hp_gain = 1 / sqrt(1 + (5.0 / (corner_frequency)) ^ 2);
-            let hp_gain = 0.577350269190468;
+            //let hp_gain = 0.577350269190468;
+            let hp_gain = 1.0;
         
             // Apply the 1 pole HP to left side
             processed_sample_l = hp_gain * processed_sample_l;
@@ -834,7 +813,7 @@ impl Plugin for Gain {
             self.prev_processed_in_r = processed_sample_r;
             self.prev_processed_out_r = temp_sample;
             processed_sample_r = temp_sample;
-            */
+            
 
             ///////////////////////////////////////////////////////////////////////
 
