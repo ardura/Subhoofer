@@ -1,10 +1,8 @@
-# Subhoofer
-
-## Description
-Subhoofer by Ardura
-
+# Subhoofer by Ardura
 Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight replacement for other subharmonic generation plugins. Use it to make your bass audible on small speakers or extend the sub range in bass signals! You can also beef up guitars, add bass to other instruments, presence to vocals etc. Experiment!
 
+## Description
+Subhoofer can generate bass harmonics as well as a subharmonic in addition to a few saturations aiding it
 ![image3](https://github.com/ardura/Subhoofer/assets/31751444/fcf389c3-6ec0-4ee3-8f46-39ecb5f312c2)
 
 The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
