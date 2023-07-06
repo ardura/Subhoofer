@@ -1,35 +1,52 @@
 # Subhoofer
- Sub enhancement inspired by a few Airwindows plugins. This is a windows VST 2 plugin!
 
-**Subhoofer** is a sub and bass enhancement plugin aimed at being a lightweight replacement for
-other subharmonic generation plugins.
+## Description
+Subhoofer by Ardura
 
-There is no UI coded, but your DAW should be able to generate one based off the parameters
-provided. There are 6 parameters available to change.
+Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight replacement for other subharmonic generation plugins. Use it to make your bass audible on small speakers or extend the sub range in bass signals! You can also beef up guitars, add bass to other instruments, presence to vocals etc. Experiment!
 
-## Parameters
-● Subhoof - Drive for the generated sub - this subtle effect is meant to balance with
-SubGain. Use your ears!
+The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
 
-● SubGain - Gain for the sub layer signal
+## Parameters:
+● In Gain - Gain before any processing happens
+● Out Gain - Gain after all processing happens
+● Wet - How much processed sound is there instead of dry/unprocessed sound
+● Hardness - Tone control for harmonics - modified Chebyshev algorithm
+● Harmonics - Generated harmonics added to the signal
+● Harmonic Algorithm - The methods used to generate harmonics:
+    ● 1: An approximation of the first 4 harmonics with varying sin/cos amplitudes - sounds like a renaissance
+    ● 2: An 8 harmonic stack with a different low-focus than Algorithm 1
+    ● 3: A Modified 7 harmonic stack from Duro Console that favors non octave harmonics
+    ● 4. Harmonics added in from a tanh transfer function pretending to be tape
+● Sub Gain - Gain for the subharmonic generator
+● Sub Drive - Send the subharmonic signal to Harmonic Algorithm 4 for subtle harmonics
 
-● TiltEQ - Tilt EQ with more weight/character to the bass side, values to the right bias
-towards highs and values to the left bias towards the lows
+## Installation
+Drag the vst3 file into your "C:\Program Files\Common Files\VST3" directory or wherever your vst3 are stored.
+Done!
+```
+  ((        ))
+   \\      //
+ _| \\____// |__
+\~~/ ~    ~\/~~~/
+ -(|    _/o  ~.-
+   /  /     ,|
+  (~~~)__.-\ |
+   ``-     | |
+    |      | |
+    |        |
+    ```
 
-● Lowpass - A lowpass filter that acts before the final output gain
+## Building
 
-● TiltFrq - The center frequency of the TiltEQ - use this to bias the EQ further when you
-don’t want to mess with sub gain.
+After installing [Rust](https://rustup.rs/), you can compile Subhoofer as follows:
 
-● OutGain - final output gain/reduction
+```shell
+cargo xtask bundle Subhoofer --profile release
+    or use the following for debugging
+cargo xtask bundle Subhoofer --profile profiling
+```
 
-##
-
-PDF Copy of this Readme including pictures:
-[Subhoofer Readme.pdf](https://github.com/ardura/Subhoofer/files/11180075/Subhoofer.Readme.pdf)
-
-
-This plugin was made possible thanks to Airwindows source code (and a few emails with questions). I
-highly recommend supporting Chris https://www.airwindows.com/ , along with various forum postings
-and advice from https://www.musicdsp.org/en/latest/ and mitxela’s tutorial
-https://mitxela.com/projects/vsti_tutorial
+This plugin was made possible thanks to the Nih-Plug Rust Library, the egui GUI library, and
+Airwindows source code thankfully being MIT licensed which helped me learn. I highly recommend supporting Chris
+https://www.airwindows.com/
