@@ -36,18 +36,6 @@ The default settings are already configured to mimic a bass plugin of renaissanc
 ## Installation
 Drag the vst3 file into your "C:\Program Files\Common Files\VST3" directory or wherever your vst3 are stored.
 Done!
-```
-  ((        ))
-   \\      //
- _| \\____// |__
-\~~/ ~    ~\/~~~/
- -(|    _/o  ~.-
-   /  /     ,|
-  (~~~)__.-\ |
-   ``-     | |
-    |      | |
-    |        |
-```
 
 ## Examples and comparison
 This is a sine wave at C3:
