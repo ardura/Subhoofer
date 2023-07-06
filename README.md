@@ -4,7 +4,9 @@
 Subhoofer by Ardura
 
 Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight replacement for other subharmonic generation plugins. Use it to make your bass audible on small speakers or extend the sub range in bass signals! You can also beef up guitars, add bass to other instruments, presence to vocals etc. Experiment!
+
 ![image3](https://github.com/ardura/Subhoofer/assets/31751444/fcf389c3-6ec0-4ee3-8f46-39ecb5f312c2)
+
 The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
 
 ## Parameters:
@@ -52,12 +54,16 @@ Done!
 ## Examples and comparison
 This is a sine wave at C3:
 ![image1](https://github.com/ardura/Subhoofer/assets/31751444/f7a5e5af-e9c3-4c0f-85db-a4d1e29fc4e1)
+
 Using a Renaissance Bass plugin at default settings:
 ![image2](https://github.com/ardura/Subhoofer/assets/31751444/5936785b-887a-4f67-92dc-8a6724d10764)
+
 Using Subhoofer at default settings:
 ![image4](https://github.com/ardura/Subhoofer/assets/31751444/ad67e3ce-736a-4f34-9582-1f0f9376fb10)
+
 Tweaking settings further in Subhoofer - Note the presence of the sub now:
 ![image5](https://github.com/ardura/Subhoofer/assets/31751444/2325bc5f-c092-48e9-8e71-576fc58ff6b7)
+
 Here are the settings that produced the last example:
 ![image6](https://github.com/ardura/Subhoofer/assets/31751444/dd42174c-491d-4343-a528-35c4021c2893)
 
