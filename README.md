@@ -55,6 +55,7 @@ Here are the settings that produced the last example:
 
 ## Known issues
 ● Plugin will shut down if you make it generate a hugely positive signal - don’t do this anyways if you want to keep your speakers/monitors working.
+
 ● xcb flags as a security issue for some unchecked casts and unsafe returns from functions in that library, but when updating xcb to a newer version, subhoofer no longer compiles. Don't compile this on linux if that is a concern to you sorry :(
 
 ## Building
