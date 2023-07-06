@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 mod ui_knob;
 mod db_meter;
 use atomic_float::AtomicF32;
@@ -11,7 +12,7 @@ use std::{sync::{Arc}, ops::RangeInclusive};
  * Build with: cargo xtask bundle subhoofer --profile <release or profiling>
  * *************************************************************************/
 
-// GUI Colors
+ // GUI Colors
 const A_KNOB_OUTSIDE_COLOR: Color32 = Color32::from_rgb(112,141,129);
 const A_BACKGROUND_COLOR: Color32 = Color32::from_rgb(0,20,39);
 const A_KNOB_INSIDE_COLOR: Color32 = Color32::from_rgb(244,213,141);
