@@ -1,84 +1,52 @@
-# Duro Console
+# Subhoofer
+
 ## Description
-This is a mixture of a saturator and console “emulation” to do some subtle or not-so-subtle processing to audio in a few flavors I really like.
+Subhoofer by Ardura
 
-![image](https://github.com/ardura/Duro-Console/assets/31751444/3d2bf6ea-1b47-4192-9a53-ff5823aca5aa)
+Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight replacement for other subharmonic generation plugins. Use it to make your bass audible on small speakers or extend the sub range in bass signals! You can also beef up guitars, add bass to other instruments, presence to vocals etc. Experiment!
 
+The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
 
-## Signal Path
-1. Input gain
-2. Saturation above threshold w/ drive
-3. Console process w/ drive on entire signal
-4. Output gain
-5. Wet/Dry balance
+## Parameters:
+● In Gain - Gain before any processing happens
+● Out Gain - Gain after all processing happens
+● Wet - How much processed sound is there instead of dry/unprocessed sound
+● Hardness - Tone control for harmonics - modified Chebyshev algorithm
+● Harmonics - Generated harmonics added to the signal
+● Harmonic Algorithm - The methods used to generate harmonics:
+    ● 1: An approximation of the first 4 harmonics with varying sin/cos amplitudes - sounds like a renaissance
+    ● 2: An 8 harmonic stack with a different low-focus than Algorithm 1
+    ● 3: A Modified 7 harmonic stack from Duro Console that favors non octave harmonics
+    ● 4. Harmonics added in from a tanh transfer function pretending to be tape
+● Sub Gain - Gain for the subharmonic generator
+● Sub Drive - Send the subharmonic signal to Harmonic Algorithm 4 for subtle harmonics
 
-## Saturation Types
-● None - Bypass saturating the signal
-
-● Tape - A tape-like saturation created by adding odd and even harmonics using a transfer
-
-curve based off the hyperbolic tangent that is then softclipped
-
-● Candle - Mimics distortion through a candle flame in front of a microphone
-
-● Chebyshev - Chebyshev polynomial saturation curve with precomputed coefficients to
-save processing - sounds tape-like-like but smoother
-(https://en.wikipedia.org/wiki/Chebyshev_polynomials )
-
-● Leaf Saturation - A gain > nonlinear curve > gain function I made. A mix of subtle
-crunch to square-approaching saturation sound to me.
-
-● Digital Clip - Clip the signal if it exceeds the threshold then mix original signal with
-clipped signal based off the drive amount
-
-● Golden Cubic - When above threshold, multiply by the golden ratio and cube the excess
-amount then softclip. This is a variation of a really hardcore distortion with some pleasant
-sounds at low values.
-
-● Transformer - A transformer saturation implementation, this can mangle a sound
-completely or introduce some small distortion, make sure you are using some drive here.
-Low drive exaggerates the mangling.
-
-● Odd Harmonics - REALLY LOUD- adds 10 odd harmonics overdrive at drive level
-
-● Odd Harmonics - REALLY LOUD- adds every 4th harmonic to the signal overdriven at
-drive level
-
-
-## Console Types
-
-● Bypass - Bypass adding console processing to the signal
-
-● Neve Inspired - The Airwindows Neverland Tapped Delay Line code with drive linked to
-the amount of signal sent through without dithering and denormalization - created from
-Neve 1272 impulses (https://www.airwindows.com/neverland/ )
-
-● API Inspired - The Airwindows Apicolypse Tapped Delay Line code with drive linked to
-the amount of signal sent through without dithering and denormalization - created from
-API 512 impulses (https://www.airwindows.com/apicolypse/ )
-
-● Precision Inspired - The Airwindows Precious Tapped Delay Line code with drive linked
-to the amount of signal sent through without dithering and denormalization - created
-from Precision 8 impulses (https://www.airwindows.com/precious/ )
-
-● Leaf - A mid-focused console with a less processed sound
-
-● Vine - A console built from random number range then modified further into a subtle
-change in tones
-
-● Duro - A simplified console tap built off Vine with a stupid idea to take RAGE = 12463
-and left shift that over and over with some other silliness.
-
-
+## Installation
+Drag the vst3 file into your "C:\Program Files\Common Files\VST3" directory or wherever your vst3 are stored.
+Done!
+```
+  ((        ))
+   \\      //
+ _| \\____// |__
+\~~/ ~    ~\/~~~/
+ -(|    _/o  ~.-
+   /  /     ,|
+  (~~~)__.-\ |
+   ``-     | |
+    |      | |
+    |        |
+    ```
 
 ## Building
 
-After installing [Rust](https://rustup.rs/), you can compile Duro Console as follows:
+After installing [Rust](https://rustup.rs/), you can compile Subhoofer as follows:
 
 ```shell
-cargo xtask bundle duro_console --profile release
+cargo xtask bundle Subhoofer --profile release
+    or use the following for debugging
+cargo xtask bundle Subhoofer --profile profiling
 ```
 
 This plugin was made possible thanks to the Nih-Plug Rust Library, the egui GUI library, and
-Airwindows source code thankfully being MIT licensed. I highly recommend supporting Chris
+Airwindows source code thankfully being MIT licensed which helped me learn. I highly recommend supporting Chris
 https://www.airwindows.com/
