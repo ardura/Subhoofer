@@ -5,11 +5,11 @@ use nih_plug::{prelude::*};
 use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState, widgets};
 use std::{sync::{Arc}, ops::RangeInclusive};
 
-/**************************************************
+/***************************************************************************
  * Subhoofer v2 by Ardura
  * 
- * Build with: cargo xtask bundle subhoofer
- * ************************************************/
+ * Build with: cargo xtask bundle subhoofer --profile <release or profiling>
+ * *************************************************************************/
 
 // GUI Colors
 const A_KNOB_OUTSIDE_COLOR: Color32 = Color32::from_rgb(112,141,129);
@@ -73,10 +73,6 @@ pub struct Gain {
     iir_sample_y: f32,
     iir_sample_z: f32,
     sub_iir: f32,
-    iir_sample_la: f32,
-    iir_sample_lb: f32,
-    iir_sample_ra: f32,
-    iir_sample_rb: f32,
 
     // Logic control variables
     sub_octave: bool,
@@ -86,12 +82,6 @@ pub struct Gain {
     // The current data for the different meters
     out_meter: Arc<AtomicF32>,
     in_meter: Arc<AtomicF32>,
-}
-
-fn dc_block(input: f32, prev_output: &mut f32, alpha: f32) -> f32 {
-    let output = input - *prev_output + alpha * input;
-    *prev_output = output;
-    output
 }
 
 // Modified function from Duro Console for different behavior - hoof hardness
@@ -124,28 +114,33 @@ fn tape_saturation(input_signal: f32, drive: f32) -> f32 {
     output_sample - input_signal
 }
 
+/* This is my "close enough" to a certain letter bass plugin algorithm. The
+    original one probably works in the frequency domain. This one is in the
+    time domain since I have little to no knowledge of the FFT at this time.
+    Maybe in the future this can become more efficient. - Ardura */
 fn a_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
-    let num_harmonics: usize = 3;
+    let num_harmonics: usize = 4;
     let mut summed: f32 = 0.0;
 
     for j in 1..=num_harmonics {
         match j {
             1 => {
-                let harmonic_component: f32 = harmonic_strength * 196.0 * (signal * j as f32).cos() - signal;
+                let harmonic_component: f32 = harmonic_strength * 170.0 * (signal * j as f32).cos() - signal;
                 summed += harmonic_component;
             },
             2 => {
-                let harmonic_component: f32 = harmonic_strength * 90.0 * (signal * j as f32).sin() - signal;
+                let harmonic_component: f32 = harmonic_strength * 25.0 * (signal * j as f32).sin() - signal;
                 summed += harmonic_component;
             },
             3 => {
-                let harmonic_component: f32 = harmonic_strength * 1.0 * (signal * j as f32).cos() - signal;
+                let harmonic_component: f32 = harmonic_strength * 150.0 * (signal * j as f32).cos() - signal;
                 summed += harmonic_component;
             },
-            _ => {
-                let harmonic_component: f32 = harmonic_strength * 0.01 * (signal * j as f32).sin() - signal;
-                summed += harmonic_component;
-            }
+            4 => {
+                let harmonic_component2: f32 = harmonic_strength * 80.0 * (signal * j as f32).sin() - signal;
+                summed += harmonic_component2;
+            },
+            _ => unreachable!()
         }
     }
     if harmonic_strength > 0.0
@@ -157,22 +152,23 @@ fn a_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     }
 }
 
+/* One of the other algorithms I was messing around with - not exactly the
+    sound I was going for but unique enough to include - Ardura */
 fn b_bass_saturation(signal: f32, mut harmonic_strength: f32) -> f32 {
     let num_harmonics: usize = 8;
     let mut summed: f32 = 0.0;
 
     for j in 1..=num_harmonics {
-        //let harmonic: i32 = 2 * j as i32 - 1;
-
         if j % 2 == 1 {
-            let harmonic_component: f32 = harmonic_strength * 1.2 * (signal * j as f32).cos();
-            summed += harmonic_component;
+            let harmonic_component: f32 = harmonic_strength * 3.0 * (signal * j as f32).cos();
+            let harmonic_component2: f32 = harmonic_strength * (signal * j as f32).sin();
+            summed += harmonic_component + harmonic_component2;
             continue;
         }
         else if j % 2 == 0 {
             match j {
                 4 => harmonic_strength *= 0.6,
-                6 => harmonic_strength *= 5.0,
+                6 => harmonic_strength *= 4.0,
                 _ => harmonic_strength *= 1.0
             }
             let harmonic_component: f32 = harmonic_strength * (signal * j as f32).sin();
@@ -189,14 +185,14 @@ fn b_bass_saturation(signal: f32, mut harmonic_strength: f32) -> f32 {
 }
 
 
-// Modified odd saturation from Duro Console to mimic RBass
+// Modified "odd_saturation" from Duro Console
 fn c_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     let num_harmonics: usize = 7;
     let mut summed: f32 = 0.0;
     for j in 1..=num_harmonics {
-        // Let harmonics get stronger the more we go with * j/2.0
-        let harmonic_component: f32 = harmonic_strength * (signal * j as f32).cos() - signal;
-        summed += harmonic_component;
+        let harmonic_component: f32 = harmonic_strength * 0.3 * (signal * j as f32).sin() - signal;
+        let harmonic_component2: f32 = harmonic_strength * (signal * j as f32).cos() - signal;
+        summed += harmonic_component + harmonic_component2;
     }
     // Divide this by harmonic addition amount
     summed/7.0
@@ -214,9 +210,6 @@ struct GainParams {
 
     #[id = "Hoof Hardness"]
     pub hoof_hardness: FloatParam,
-
-    #[id = "DC Block Freq"]
-    pub dc_freq: IntParam,
 
     #[id = "Sub Gain"]
     pub sub_gain: FloatParam,
@@ -286,10 +279,6 @@ impl Default for Gain {
             prev_processed_in_l: 0.0,
             prev_processed_out_l: 0.0,
             sub_iir: 0.0,
-            iir_sample_la: 0.0,
-            iir_sample_lb: 0.0,
-            iir_sample_ra: 0.0,
-            iir_sample_rb: 0.0,
             sub_octave: false,
             was_negative: false,
             bass_flip_counter: 1,
@@ -320,24 +309,15 @@ impl Default for GainParams {
             // Hoof Parameter
             hoof_hardness: FloatParam::new(
                 "Hoof Hardness",
-                0.09,
+                0.04,
                 FloatRange::Linear {
-                    min: 0.0,
-                    max: 1.0,
+                    min: 0.00,
+                    max: 0.30,
                 },
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Hardness")
             .with_value_to_string(formatters::v2s_f32_percentage(2)),
-
-            // DC Block Frew
-            dc_freq: IntParam::new(
-                "DC Block Freq",
-                20,
-                IntRange::Linear { min: 1, max: 80 },
-            )
-            .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" DC Block Freq"),
 
             // Sub gain dB parameter
             sub_gain: FloatParam::new(
@@ -365,7 +345,7 @@ impl Default for GainParams {
             // Harmonics Parameter
             harmonics: FloatParam::new(
                 "Harmonics",
-                0.0037,
+                0.0011,
                 FloatRange::Skewed { min: 0.0, max: 1.0, factor: FloatRange::skew_factor(-2.8) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
@@ -383,7 +363,7 @@ impl Default for GainParams {
             // Output gain parameter
             output_gain: FloatParam::new(
                 "Output Gain",
-                util::db_to_gain(0.0),
+                util::db_to_gain(-2.8),
                 FloatRange::Skewed {
                     min: util::db_to_gain(-12.0),
                     max: util::db_to_gain(12.0),
@@ -539,23 +519,30 @@ impl Plugin for Gain {
                                 });
 
                                 ui.vertical(|ui| {
-                                    let mut dc_freq_knob = ui_knob::ArcKnob::for_param(&params.dc_freq, setter, knob_size);
-                                    dc_freq_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
-                                    dc_freq_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    dc_freq_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
-                                    ui.add(dc_freq_knob);
-
                                     let mut sub_gain_knob = ui_knob::ArcKnob::for_param(&params.sub_gain, setter, knob_size);
                                     sub_gain_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
                                     sub_gain_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    sub_gain_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    sub_gain_knob.set_line_color(A_KNOB_OUTSIDE_COLOR2);
                                     ui.add(sub_gain_knob);
                                 
                                     let mut sub_drive_knob = ui_knob::ArcKnob::for_param(&params.sub_drive, setter, knob_size);
                                     sub_drive_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
                                     sub_drive_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    sub_drive_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    sub_drive_knob.set_line_color(A_KNOB_OUTSIDE_COLOR2);
                                     ui.add(sub_drive_knob);
+
+                                    // Deer
+                                    ui.label(RichText::new(r"  ((        ))
+   \\      //
+ _| \\____// |__
+\~~/ ~    ~\/~~~/
+ -(|    _/o  ~.-
+   /  /     ,|
+  (~~~)__.-\ |
+   ``-     | |
+    |      | |
+    |        |
+").font(FontId::monospace(10.0)).color(A_KNOB_OUTSIDE_COLOR2));
                                 });
                             });
                         });
@@ -563,6 +550,8 @@ impl Plugin for Gain {
                 }
             )
     }
+
+    
 
     fn initialize(
         &mut self,
@@ -593,7 +582,6 @@ impl Plugin for Gain {
             let gain: f32 = util::gain_to_db(self.params.free_gain.smoothed.next());
             let num_gain: f32;
             let hoof_hardness: f32 = self.params.hoof_hardness.smoothed.next();
-            let dc_freq: i32 = self.params.dc_freq.smoothed.next();
             let sub_gain: f32 = self.params.sub_gain.smoothed.next();
             let output_gain: f32 = self.params.output_gain.smoothed.next();
             let sub_drive: f32 = self.params.sub_drive.smoothed.next();
@@ -631,10 +619,9 @@ impl Plugin for Gain {
             // Sub voicing variables
             let sub_headbump_freq: f32 = (((hoof_hardness) * 0.1) + 0.02) / overall_scale;
             self.sub_iir = sub_headbump_freq / 44.1;
-            // BassGain = sub_drive
 
             // Sub drive samples
-            // self.lp is our lowpassed center signal
+            // self.lp is our center signal
             self.lp = (in_l + in_r) / 4096.0;
             self.iir_drive_sample_a = (self.iir_drive_sample_a * (1.0 - sub_headbump_freq)) + (self.lp * sub_headbump_freq);
             self.lp = self.iir_drive_sample_a;
@@ -766,7 +753,7 @@ impl Plugin for Gain {
                     processed_sample_r = c_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 }
                 4 => {
-                    // Airwindows inspired
+                    // Generate tanh curve harmonics gently
                     processed_sample_l = tape_saturation(in_l, harmonics);
                     processed_sample_r = tape_saturation(in_r, harmonics);
                 },
@@ -782,11 +769,6 @@ impl Plugin for Gain {
             self.bass_flip_counter = 
                 if self.bass_flip_counter < 1 || self.bass_flip_counter > 3 { 1 } 
                 else { self.bass_flip_counter };
-
-            
-            //let alpha = 1.0 - (-2.0 * std::f32::consts::PI * dc_freq as f32 / sample_rate).exp2();
-            //processed_sample_l = dc_block(processed_sample_l, &mut self.prev_processed_out_l, alpha);
-            //processed_sample_r = dc_block(processed_sample_r, &mut self.prev_processed_out_r, alpha);
             
             // Remove DC Offset with single pole HP
             let hp_b0: f32 = 1.0;
@@ -814,7 +796,6 @@ impl Plugin for Gain {
             self.prev_processed_out_r = temp_sample;
             processed_sample_r = temp_sample;
             
-
             ///////////////////////////////////////////////////////////////////////
 
             // Calculate dry/wet mix
@@ -831,8 +812,6 @@ impl Plugin for Gain {
             *channel_samples.get_mut(0).unwrap() = processed_sample_l;
             *channel_samples.get_mut(1).unwrap() = processed_sample_r;
 
-
-            // To save resources, a plugin can (and probably should!) only perform expensive
             // calculations that are only displayed on the GUI while the GUI is open
             if self.params.editor_state.is_open() {
                 // Input gain meter
@@ -871,8 +850,8 @@ impl Plugin for Gain {
 }
 
 impl ClapPlugin for Gain {
-    const CLAP_ID: &'static str = "com.ardura.duro.console";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("A console with a combination of saturation algorithms");
+    const CLAP_ID: &'static str = "com.ardura.subhoofer";
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Harmonic and Subharmonic Bass Enhancement");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
@@ -884,7 +863,7 @@ impl ClapPlugin for Gain {
 }
 
 impl Vst3Plugin for Gain {
-    const VST3_CLASS_ID: [u8; 16] = *b"SubhooferAAAAAAA";
+    const VST3_CLASS_ID: [u8; 16] = *b"SubhooferArduraA";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Distortion];
 }
