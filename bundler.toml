@@ -4,5 +4,5 @@
 # [package_name]
 # name = "Human Readable Plugin Name"  # defaults to <package_name>
 
-[Duro_Console]
-name = "Duro Console"
+[Subhoofer]
+name = "Subhoofer"
