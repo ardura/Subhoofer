@@ -3,7 +3,7 @@ Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight repl
 
 ## Description
 Subhoofer can generate bass harmonics as well as a subharmonic in addition to a few saturations aiding it
-![image3](https://github.com/ardura/Subhoofer/assets/31751444/fcf389c3-6ec0-4ee3-8f46-39ecb5f312c2)
+![image](https://github.com/ardura/Subhoofer/assets/31751444/ca711db2-b5a7-446f-ba4e-8b011585ccb2)
 
 The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
 
@@ -27,7 +27,11 @@ The default settings are already configured to mimic a bass plugin of renaissanc
     
     ● 3: A Modified 7 harmonic stack from Duro Console that favors non octave harmonics
     
-    ● 4. Harmonics added in from a tanh transfer function pretending to be tape
+    ● 4: Harmonics added in from a tanh transfer function pretending to be tape
+
+    ● 5: Another Renaissance inspired preset but skipping the first two harmonic multiplications
+
+    ● 6: Custom Harmonic Sliders for user to create their own tones
     
 ● Sub Gain - Gain for the subharmonic generator
 
@@ -52,6 +56,11 @@ Tweaking settings further in Subhoofer - Note the presence of the sub now:
 
 Here are the settings that produced the last example:
 ![image6](https://github.com/ardura/Subhoofer/assets/31751444/dd42174c-491d-4343-a528-35c4021c2893)
+
+## New! Custom settings
+Users can now create their own harmonics using the function behind algorithms 1 and 5
+![custom_sliders](https://github.com/ardura/Subhoofer/assets/31751444/c23196ea-da4b-4d37-bbde-36fd00d393aa)
+
 
 ## Known issues
 ● Plugin will shut down if you make it generate a hugely positive signal - don’t do this anyways if you want to keep your speakers/monitors working.
