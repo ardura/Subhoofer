@@ -9,8 +9,24 @@ use std::{sync::{Arc}, ops::RangeInclusive};
 /***************************************************************************
  * Subhoofer v2 by Ardura
  * 
- * Build with: cargo xtask bundle subhoofer --profile <release or profiling>
+ * Build with: cargo xtask bundle Subhoofer --profile <release or profiling>
  * *************************************************************************/
+
+ #[derive(Enum, PartialEq, Eq, Debug, Copy, Clone)]
+ pub enum AlgorithmType{
+     #[name = "A Rennaisance Type Bass"]
+     ABass,
+     #[name = "8 Harmonic Stack"]
+     BBass,
+     #[name = "Non Octave Duro Console"]
+     CBass,
+     #[name = "TanH Transfer"]
+     TanH,
+     #[name = "Rennaisance Inspired 2"]
+     ABass2,
+     #[name = "User Control Sliders"]
+     CustomSliders,
+ }
 
  // GUI Colors
 const A_KNOB_OUTSIDE_COLOR: Color32 = Color32::from_rgb(112,141,129);
@@ -20,7 +36,7 @@ const A_KNOB_OUTSIDE_COLOR2: Color32 = Color32::from_rgb(242,100,25);
 
 // Plugin sizing
 const WIDTH: u32 = 360;
-const HEIGHT: u32 = 380;
+const HEIGHT: u32 = 528;
 
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 100.0;
@@ -199,6 +215,35 @@ fn c_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
     summed/7.0
 }
 
+
+fn custom_sincos_saturation(signal: f32, harmonic_strength1: f32, harmonic_strength2: f32, harmonic_strength3: f32, harmonic_strength4: f32) -> f32 {
+    let num_harmonics: usize = 4;
+    let mut summed: f32 = 0.0;
+
+    for j in 1..=num_harmonics {
+        match j {
+            1 => {
+                let harmonic_component: f32 = harmonic_strength1 * (signal * j as f32).cos() - signal;
+                summed += harmonic_component;
+            },
+            2 => {
+                let harmonic_component: f32 = harmonic_strength2 * (signal * j as f32).sin() - signal;
+                summed += harmonic_component;
+            },
+            3 => {
+                let harmonic_component: f32 = harmonic_strength3 * (signal * j as f32).cos() - signal;
+                summed += harmonic_component;
+            },
+            4 => {
+                let harmonic_component2: f32 = harmonic_strength4 * (signal * j as f32).sin() - signal;
+                summed += harmonic_component2;
+            },
+            _ => unreachable!()
+        }
+    }
+    summed
+}
+
 #[derive(Params)]
 struct GainParams {
     /// The editor state, saved together with the parameter state so the custom scaling can be
@@ -222,7 +267,20 @@ struct GainParams {
     pub harmonics: FloatParam,
 
     #[id = "Harmonic Algorithm"]
-    pub h_algorithm: IntParam,
+    //pub h_algorithm: IntParam,
+    pub h_algorithm: EnumParam<AlgorithmType>,
+
+    #[id = "Custom Strength 1"]
+    pub custom_harmonics1: FloatParam,
+
+    #[id = "Custom Strength 2"]
+    pub custom_harmonics2: FloatParam,
+
+    #[id = "Custom Strength 3"]
+    pub custom_harmonics3: FloatParam,
+
+    #[id = "Custom Strength 4"]
+    pub custom_harmonics4: FloatParam,
 
     #[id = "output_gain"]
     pub output_gain: FloatParam,
@@ -353,13 +411,54 @@ impl Default for GainParams {
             .with_unit(" Harmonics")
             .with_value_to_string(formatters::v2s_f32_percentage(2)),
 
+            /*
             // Sub algorithm Parameter
             h_algorithm: IntParam::new(
                 "Harmonic Algorithm",
                 1,
-                IntRange::Linear { min: 1, max: 4 },
+                IntRange::Linear { min: 1, max: 5 },
             )
             .with_smoother(SmoothingStyle::Linear(30.0)),
+            */
+
+            h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass),
+
+
+            // Custom Harmonics Parameter 1
+            custom_harmonics1: FloatParam::new(
+                "Custom Harmonic 1",
+                0.0,
+                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" Custom Harmonic 1"),
+
+            // Custom Harmonics Parameter 2
+            custom_harmonics2: FloatParam::new(
+                "Custom Harmonic 2",
+                0.0,
+                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" Custom Harmonic 2"),
+
+            // Custom Harmonics Parameter 3
+            custom_harmonics3: FloatParam::new(
+                "Custom Harmonic 3",
+                0.0,
+                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" Custom Harmonic 3"),
+
+            // Custom Harmonics Parameter 4
+            custom_harmonics4: FloatParam::new(
+                "Custom Harmonic 4",
+                0.0,
+                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+            )
+            .with_smoother(SmoothingStyle::Linear(30.0))
+            .with_unit(" Custom Harmonic 4"),
 
             // Output gain parameter
             output_gain: FloatParam::new(
@@ -416,7 +515,7 @@ impl Plugin for Gain {
         self.params.clone()
     }
 
-    fn editor(&self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+    fn editor(self: &Gain, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let in_meter = self.in_meter.clone();
         let out_meter = self.out_meter.clone();
@@ -514,9 +613,6 @@ impl Plugin for Gain {
                                     harmonics_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
                                     harmonics_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
                                     ui.add(harmonics_knob);
-
-                                    ui.label("Harmonic Algorithm");
-                                    ui.add(widgets::ParamSlider::for_param(&params.h_algorithm, setter).with_width(knob_size*2.0 + 16.0));
                                 });
 
                                 ui.vertical(|ui| {
@@ -546,7 +642,18 @@ impl Plugin for Gain {
 ").font(FontId::monospace(10.0)).color(A_KNOB_OUTSIDE_COLOR2));
                                 });
                             });
+                            //sliders
+                            ui.vertical(|ui| {
+                                ui.label("Harmonic Algorithm");
+                                ui.add(widgets::ParamSlider::for_param(&params.h_algorithm, setter).with_width(100.0));
+                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics1, setter).with_width(200.0));
+                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics2, setter).with_width(200.0));
+                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics3, setter).with_width(200.0));
+                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics4, setter).with_width(200.0));
+                            });
                         });
+                        
+
                     });
                 }
             )
@@ -587,7 +694,11 @@ impl Plugin for Gain {
             let output_gain: f32 = self.params.output_gain.smoothed.next();
             let sub_drive: f32 = self.params.sub_drive.smoothed.next();
             let harmonics: f32 = self.params.harmonics.smoothed.next();
-            let h_algorithm: i32 = self.params.h_algorithm.smoothed.next();
+            let custom_harmonics1: f32 = self.params.custom_harmonics1.smoothed.next();
+            let custom_harmonics2: f32 = self.params.custom_harmonics2.smoothed.next();
+            let custom_harmonics3: f32 = self.params.custom_harmonics3.smoothed.next();
+            let custom_harmonics4: f32 = self.params.custom_harmonics4.smoothed.next();
+            let h_algorithm: AlgorithmType = self.params.h_algorithm.value();
             let dry_wet: f32 = self.params.dry_wet.value();
 
             // I picked this
@@ -740,25 +851,33 @@ impl Plugin for Gain {
             
             // Add: Original signal + Harmonics + Sub signal
             match h_algorithm {
-                1 => {
+                AlgorithmType::ABass => {
                     processed_sample_l = a_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
                     processed_sample_r = a_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
-                2 => {
+                AlgorithmType::BBass => {
                     // C3 signal in RBass is C3, C4, G4, C5, E5, A#5, D6, F#6
                     processed_sample_l = b_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
                     processed_sample_r = b_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
-                3 => {
+                AlgorithmType::CBass => {
                     processed_sample_l = c_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
                     processed_sample_r = c_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 }
-                4 => {
+                AlgorithmType::TanH => {
                     // Generate tanh curve harmonics gently
                     processed_sample_l = tape_saturation(in_l, harmonics);
                     processed_sample_r = tape_saturation(in_r, harmonics);
                 },
-                _ => unreachable!()
+                AlgorithmType::ABass2 => {
+                    // RBass inspired but skipping first and second harmonic multiplication
+                    processed_sample_l = custom_sincos_saturation(in_l, harmonics*0.0, harmonics*0.0, harmonics*77.29513, harmonics*112.16742) + (sub_bump * sub_gain);
+                    processed_sample_r = custom_sincos_saturation(in_l, harmonics*0.0, harmonics*0.0, harmonics*77.29513, harmonics*112.16742) + (sub_bump * sub_gain);
+                },
+                AlgorithmType::CustomSliders => {
+                    processed_sample_l = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
+                    processed_sample_r = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
+                },
             }
 
             // Hardness Saturation
@@ -838,7 +957,7 @@ impl Plugin for Gain {
 
     const HARD_REALTIME_ONLY: bool = false;
 
-    fn task_executor(&self) -> TaskExecutor<Self> {
+    fn task_executor(self: &Gain) -> TaskExecutor<Self> {
         // In the default implementation we can simply ignore the value
         Box::new(|_| ())
     }
