@@ -39,8 +39,8 @@ const HEIGHT: u32 = 528;
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 100.0;
 
-pub struct Gain {
-    params: Arc<GainParams>,
+pub struct Subhoofer {
+    params: Arc<SubhooferParams>,
 
     // normalize the peak meter's response based on the sample rate with this
     out_meter_decay_weight: f32,
@@ -195,7 +195,7 @@ fn custom_sincos_saturation(signal: f32, harmonic_strength1: f32, harmonic_stren
 }
 
 #[derive(Params)]
-struct GainParams {
+struct SubhooferParams {
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
     #[persist = "editor-state"]
@@ -238,10 +238,10 @@ struct GainParams {
     pub dry_wet: FloatParam,
 }
 
-impl Default for Gain {
+impl Default for Subhoofer {
     fn default() -> Self {
         Self {
-            params: Arc::new(GainParams::default()),
+            params: Arc::new(SubhooferParams::default()),
             out_meter_decay_weight: 1.0,
             out_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
             in_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
@@ -294,7 +294,7 @@ impl Default for Gain {
     }
 }
 
-impl Default for GainParams {
+impl Default for SubhooferParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(WIDTH, HEIGHT),
@@ -431,8 +431,8 @@ impl Default for GainParams {
     }
 }
 
-impl Plugin for Gain {
-    const NAME: &'static str = "Duro Console";
+impl Plugin for Subhoofer {
+    const NAME: &'static str = "Subhoofer";
     const VENDOR: &'static str = "Ardura";
     const URL: &'static str = "https://github.com/ardura";
     const EMAIL: &'static str = "azviscarra@gmail.com";
@@ -967,7 +967,7 @@ Double-click to reset");
     fn deactivate(&mut self) {}
 }
 
-impl ClapPlugin for Gain {
+impl ClapPlugin for Subhoofer {
     const CLAP_ID: &'static str = "com.ardura.subhoofer";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Harmonic and Subharmonic Bass Enhancement");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
@@ -980,11 +980,11 @@ impl ClapPlugin for Gain {
     ];
 }
 
-impl Vst3Plugin for Gain {
+impl Vst3Plugin for Subhoofer {
     const VST3_CLASS_ID: [u8; 16] = *b"SubhooferArduraA";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Distortion];
 }
 
-nih_export_clap!(Gain);
-nih_export_vst3!(Gain);
+nih_export_clap!(Subhoofer);
+nih_export_vst3!(Subhoofer);
