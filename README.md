@@ -5,6 +5,8 @@ Subhoofer is a sub and bass enhancement plugin aimed at being a lightweight repl
 Subhoofer can generate bass harmonics as well as a subharmonic in addition to a few saturations aiding it
 ![Subhoofer_ui](https://github.com/ardura/Subhoofer/assets/31751444/57567b43-3f72-410e-a1ec-6e57af619e87)
 
+KVR Page: https://www.kvraudio.com/product/subhoofer-by-ardura
+
 The default settings are already configured to mimic a bass plugin of renaissance 🙂 However feel free to tweak further!
 
 ## Parameters:
