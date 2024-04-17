@@ -1,6 +1,6 @@
 [package]
 name = "Subhoofer"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 authors = ["Ardura <azviscarra@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -15,26 +15,32 @@ crate-type = ["cdylib","lib"]
 
 [dependencies]
 atomic_float = "0.1"
-# Remove the `assert_process_allocs` feature to allow allocations on the audio
-# thread in debug builds.
-
-# Uncomment the below line to disable the on-by-default VST3 feature to remove
-# the GPL compatibility requirement
-#nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false, features = ["assert_process_allocs", "standalone"] }
-
-
-nih_plug = { path = "../nih-plug-e59dc33aaf0c06c834dba0821f6e269e6377f362", features = ["assert_process_allocs"]}
-nih_plug_egui = { path = "../nih-plug-e59dc33aaf0c06c834dba0821f6e269e6377f362/nih_plug_egui" }
+lazy_static = "1.4.0"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225", features = ["assert_process_allocs"] }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225"}
 once_cell = "1.18.0"
-win_dbg_logger = "0.1.0"
-
+rand = "0.8.5"
 
 [profile.release]
-lto = "thin"
-strip = "symbols"
+opt-level = 3
+debug = false
+split-debuginfo = '...'  # Platform-specific.
+strip = "none"
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false
+#opt-level = 3
+#debug = false
+#lto = "fat"
+#strip = "symbols"
 
 [profile.profiling]
 inherits = "release"
+lto = "off"
 opt-level = 0
 debug = true
 strip = "none"
