@@ -1,7 +1,7 @@
 // db_meter.rs - Ardura 2023
 // A decibel meter akin to Vizia's nice one in nih-plug
 
-use nih_plug_egui::egui::{Ui, Widget, Stroke, Color32, WidgetText, Response, vec2, Sense, NumExt, Rect, lerp, Shape, Pos2, Vec2, TextStyle};
+use nih_plug_egui::egui::{lerp, vec2, Align2, Color32, FontId, NumExt, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget, WidgetText};
 
 // TODO - let percentage work?
 #[allow(dead_code)]
@@ -14,7 +14,7 @@ enum DBMeterText {
 pub struct DBMeter {
     level: f32,
     desired_width: Option<f32>,
-    text: Option<DBMeterText>,
+    text: String,
     animate: bool,
     border_color: Color32,
     bar_color: Color32,
@@ -28,7 +28,7 @@ impl DBMeter {
         Self {
             level: level.clamp(0.0, 1.0),
             desired_width: None,
-            text: None,
+            text: String::new(),
             animate: false,
             border_color: Color32::BLACK,
             bar_color: Color32::GREEN,
@@ -43,8 +43,8 @@ impl DBMeter {
     }
 
     /// A custom text to display on the progress bar.
-    pub fn text(mut self, text: impl Into<WidgetText>) -> Self {
-        self.text = Some(DBMeterText::Custom(text.into()));
+    pub fn text(mut self, text: String) -> Self {
+        self.text = text;
         self
     }
 
@@ -70,7 +70,7 @@ impl Widget for DBMeter {
         let DBMeter {
             level,
             desired_width,
-            text,
+            ref text,
             animate, 
             border_color, 
             bar_color, 
@@ -90,9 +90,9 @@ impl Widget for DBMeter {
             }
 
             let visuals = ui.style().visuals.clone();
-            //let rounding = outer_rect.height() / 2.0;
-            // Removed rounding
-            let rounding = 0.0;
+            let rounding = outer_rect.height() / 2.0;
+            // Removed rounding then added back again
+            //let rounding = 0.0;
             ui.painter().rect(
                 outer_rect,
                 rounding,
@@ -111,13 +111,13 @@ impl Widget for DBMeter {
                 inner_rect,
                 rounding,
                 if self.level < 1.0 {self.bar_color} else {Color32::RED},
-                Stroke::none(),
+                Stroke::new(1.0, Color32::TRANSPARENT),
             );
 
             if animate {
                 let n_points = 20;
-                let start_angle = ui.input().time * std::f64::consts::TAU;
-                let end_angle = start_angle + 240f64.to_radians() * ui.input().time.sin();
+                let start_angle = ui.input(|i|i.time) * std::f64::consts::TAU;
+                let end_angle = start_angle + 240f64.to_radians() * ui.input(|i|i.time).sin();
                 let circle_radius = rounding - 2.0;
                 let points: Vec<Pos2> = (0..n_points)
                     .map(|i| {
@@ -145,25 +145,12 @@ impl Widget for DBMeter {
                 ui.painter().add(Shape::line(points,Stroke::new(1.0, self.border_color),));
             }
 
-            if let Some(text_kind) = text {
-                let text = match text_kind {
-                    DBMeterText::Custom(text) => text,
-                    DBMeterText::Percentage => {
-                        format!("{}%", (level * 100.0) as usize).into()
-                    }
-                };
-                let galley = text.into_galley(ui, Some(false), f32::INFINITY, TextStyle::Button);
-                let text_pos = outer_rect.left_center() - Vec2::new(0.0, galley.size().y / 2.0)
-                    + vec2(ui.spacing().item_spacing.x, 0.0);
-                let text_color = visuals
-                    .override_text_color
-                    .unwrap_or(self.border_color);
-                galley.paint_with_fallback_color(
-                    &ui.painter().with_clip_rect(outer_rect),
-                    text_pos,
-                    text_color,
-                );
-            }
+            let text_pos = outer_rect.left_center() + vec2(ui.spacing().item_spacing.x * 2.0, 0.0);
+            let text_color = visuals
+                .override_text_color
+                .unwrap_or(self.border_color);
+            let temp: String = self.text;
+            ui.painter().text(text_pos, Align2::LEFT_CENTER, temp, FontId::monospace(10.0), text_color);
         }
 
         response

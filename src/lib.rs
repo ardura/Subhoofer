@@ -1,38 +1,36 @@
 #![allow(non_snake_case)]
-mod ui_knob;
-mod db_meter;
+mod CustomWidgets;
 use atomic_float::AtomicF32;
 use nih_plug::{prelude::*};
 use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState, widgets};
+use CustomWidgets::{db_meter, ui_knob};
 use std::{sync::{Arc}, ops::RangeInclusive};
 
 /***************************************************************************
- * Subhoofer v2 by Ardura
+ * Subhoofer v2.2.0 by Ardura
  * 
  * Build with: cargo xtask bundle Subhoofer --profile <release or profiling>
  * *************************************************************************/
 
  #[derive(Enum, PartialEq, Eq, Debug, Copy, Clone)]
  pub enum AlgorithmType{
-     #[name = "A Rennaisance Type Bass"]
-     ABass,
-     #[name = "8 Harmonic Stack"]
-     BBass,
-     #[name = "Non Octave Duro Console"]
-     CBass,
-     #[name = "TanH Transfer"]
-     TanH,
-     #[name = "Rennaisance Inspired 2"]
-     ABass2,
-     #[name = "User Control Sliders"]
-     CustomSliders,
+    #[name = "A Bass New"]
+    ABass2,
+    #[name = "8 Harmonic Stack"]
+    BBass,
+    #[name = "Duro Console"]
+    CBass,
+    #[name = "TanH Transfer"]
+    TanH,
+    #[name = "Custom"]
+    CustomSliders,
  }
 
  // GUI Colors
-const A_KNOB_OUTSIDE_COLOR: Color32 = Color32::from_rgb(112,141,129);
-const A_BACKGROUND_COLOR: Color32 = Color32::from_rgb(0,20,39);
-const A_KNOB_INSIDE_COLOR: Color32 = Color32::from_rgb(244,213,141);
-const A_KNOB_OUTSIDE_COLOR2: Color32 = Color32::from_rgb(242,100,25);
+const TEAL: Color32 = Color32::from_rgb(13,62,102);
+const NAVY_BLUE: Color32 = Color32::from_rgb(55,50,48);
+const BEIGE: Color32 = Color32::from_rgb(239,141,11);
+const LIGHT_GREY: Color32 = Color32::from_rgb(204,205,196);
 
 // Plugin sizing
 const WIDTH: u32 = 360;
@@ -131,44 +129,6 @@ fn tape_saturation(input_signal: f32, drive: f32) -> f32 {
     output_sample - input_signal
 }
 
-/* This is my "close enough" to a certain letter bass plugin algorithm. The
-    original one probably works in the frequency domain. This one is in the
-    time domain since I have little to no knowledge of the FFT at this time.
-    Maybe in the future this can become more efficient. - Ardura */
-fn a_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
-    let num_harmonics: usize = 4;
-    let mut summed: f32 = 0.0;
-
-    for j in 1..=num_harmonics {
-        match j {
-            1 => {
-                let harmonic_component: f32 = harmonic_strength * 170.0 * (signal * j as f32).cos() - signal;
-                summed += harmonic_component;
-            },
-            2 => {
-                let harmonic_component: f32 = harmonic_strength * 25.0 * (signal * j as f32).sin() - signal;
-                summed += harmonic_component;
-            },
-            3 => {
-                let harmonic_component: f32 = harmonic_strength * 150.0 * (signal * j as f32).cos() - signal;
-                summed += harmonic_component;
-            },
-            4 => {
-                let harmonic_component2: f32 = harmonic_strength * 80.0 * (signal * j as f32).sin() - signal;
-                summed += harmonic_component2;
-            },
-            _ => unreachable!()
-        }
-    }
-    if harmonic_strength > 0.0
-    {
-        summed
-    }
-    else {
-        0.0
-    }
-}
-
 /* One of the other algorithms I was messing around with - not exactly the
     sound I was going for but unique enough to include - Ardura */
 fn b_bass_saturation(signal: f32, mut harmonic_strength: f32) -> f32 {
@@ -217,30 +177,20 @@ fn c_bass_saturation(signal: f32, harmonic_strength: f32) -> f32 {
 
 
 fn custom_sincos_saturation(signal: f32, harmonic_strength1: f32, harmonic_strength2: f32, harmonic_strength3: f32, harmonic_strength4: f32) -> f32 {
-    let num_harmonics: usize = 4;
     let mut summed: f32 = 0.0;
 
-    for j in 1..=num_harmonics {
-        match j {
-            1 => {
-                let harmonic_component: f32 = harmonic_strength1 * (signal * j as f32).cos() - signal;
-                summed += harmonic_component;
-            },
-            2 => {
-                let harmonic_component: f32 = harmonic_strength2 * (signal * j as f32).sin() - signal;
-                summed += harmonic_component;
-            },
-            3 => {
-                let harmonic_component: f32 = harmonic_strength3 * (signal * j as f32).cos() - signal;
-                summed += harmonic_component;
-            },
-            4 => {
-                let harmonic_component2: f32 = harmonic_strength4 * (signal * j as f32).sin() - signal;
-                summed += harmonic_component2;
-            },
-            _ => unreachable!()
-        }
-    }
+    let harmonic_component: f32 = harmonic_strength1 * (signal * 1.0).cos() - signal;
+    summed += harmonic_component;
+
+    let harmonic_component: f32 = harmonic_strength2 * (signal * 2.0).sin() - signal;
+    summed += harmonic_component;
+
+    let harmonic_component: f32 = harmonic_strength3 * (signal * 3.0).cos() - signal;
+    summed += harmonic_component;
+
+    let harmonic_component2: f32 = harmonic_strength4 * (signal * 4.0).sin() - signal;
+    summed += harmonic_component2;
+
     summed
 }
 
@@ -266,8 +216,7 @@ struct GainParams {
     #[id = "Harmonics"]
     pub harmonics: FloatParam,
 
-    #[id = "Harmonic Algorithm"]
-    //pub h_algorithm: IntParam,
+    #[id = "Algorithm"]
     pub h_algorithm: EnumParam<AlgorithmType>,
 
     #[id = "Custom Strength 1"]
@@ -368,7 +317,7 @@ impl Default for GainParams {
             // Hoof Parameter
             hoof_hardness: FloatParam::new(
                 "Hoof Hardness",
-                0.04,
+                0.0093,
                 FloatRange::Linear {
                     min: 0.00,
                     max: 0.30,
@@ -376,7 +325,7 @@ impl Default for GainParams {
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Hardness")
-            .with_value_to_string(formatters::v2s_f32_percentage(2)),
+            .with_value_to_string(formatters::v2s_f32_percentage(4)),
 
             // Sub gain dB parameter
             sub_gain: FloatParam::new(
@@ -404,31 +353,21 @@ impl Default for GainParams {
             // Harmonics Parameter
             harmonics: FloatParam::new(
                 "Harmonics",
-                0.0011,
+                0.000668,
                 FloatRange::Skewed { min: 0.0, max: 1.0, factor: FloatRange::skew_factor(-2.8) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonics")
-            .with_value_to_string(formatters::v2s_f32_percentage(2)),
+            .with_value_to_string(formatters::v2s_f32_percentage(4)),
 
-            /*
-            // Sub algorithm Parameter
-            h_algorithm: IntParam::new(
-                "Harmonic Algorithm",
-                1,
-                IntRange::Linear { min: 1, max: 5 },
-            )
-            .with_smoother(SmoothingStyle::Linear(30.0)),
-            */
-
-            h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass),
+            h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass2),
 
 
             // Custom Harmonics Parameter 1
             custom_harmonics1: FloatParam::new(
                 "Custom Harmonic 1",
                 0.0,
-                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+                FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Custom Harmonic 1"),
@@ -437,7 +376,7 @@ impl Default for GainParams {
             custom_harmonics2: FloatParam::new(
                 "Custom Harmonic 2",
                 0.0,
-                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+                FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Custom Harmonic 2"),
@@ -446,7 +385,7 @@ impl Default for GainParams {
             custom_harmonics3: FloatParam::new(
                 "Custom Harmonic 3",
                 0.0,
-                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+                FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Custom Harmonic 3"),
@@ -455,7 +394,7 @@ impl Default for GainParams {
             custom_harmonics4: FloatParam::new(
                 "Custom Harmonic 4",
                 0.0,
-                FloatRange::Skewed { min: 0.0, max: 200.0, factor: FloatRange::skew_factor(-2.0) }
+                FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Custom Harmonic 4"),
@@ -463,7 +402,7 @@ impl Default for GainParams {
             // Output gain parameter
             output_gain: FloatParam::new(
                 "Output Gain",
-                util::db_to_gain(-2.8),
+                util::db_to_gain(-2.9),
                 FloatRange::Skewed {
                     min: util::db_to_gain(-12.0),
                     max: util::db_to_gain(12.0),
@@ -515,7 +454,7 @@ impl Plugin for Gain {
         self.params.clone()
     }
 
-    fn editor(self: &Gain, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let in_meter = self.in_meter.clone();
         let out_meter = self.out_meter.clone();
@@ -534,7 +473,7 @@ impl Plugin for Gain {
                             Rect::from_x_y_ranges(
                                 RangeInclusive::new(0.0, WIDTH as f32), 
                                 RangeInclusive::new(0.0, HEIGHT as f32)), 
-                            Rounding::from(16.0), A_BACKGROUND_COLOR);
+                            Rounding::from(16.0), NAVY_BLUE);
 
                         // Screws for that vintage look
                         let screw_space = 10.0;
@@ -548,7 +487,7 @@ impl Plugin for Gain {
                         // GUI Structure
                         ui.vertical(|ui| {
                             // Spacing :)
-                            ui.label(RichText::new("    Subhoofer").font(FontId::proportional(14.0)).color(A_KNOB_OUTSIDE_COLOR)).on_hover_text("by Ardura!");
+                            ui.label(RichText::new("    Subhoofer").font(FontId::proportional(14.0)).color(BEIGE)).on_hover_text("by Ardura!");
 
                             // Peak Meters
                             let in_meter = util::gain_to_db(in_meter.load(std::sync::atomic::Ordering::Relaxed));
@@ -560,8 +499,8 @@ impl Plugin for Gain {
                             let in_meter_normalized = (in_meter + 60.0) / 60.0;
                             ui.allocate_space(egui::Vec2::splat(2.0));
                             let mut in_meter_obj = db_meter::DBMeter::new(in_meter_normalized).text(in_meter_text);
-                            in_meter_obj.set_background_color(A_KNOB_OUTSIDE_COLOR);
-                            in_meter_obj.set_bar_color(A_KNOB_INSIDE_COLOR);
+                            in_meter_obj.set_background_color(TEAL);
+                            in_meter_obj.set_bar_color(BEIGE);
                             in_meter_obj.set_border_color(Color32::BLACK);
                             ui.add(in_meter_obj);
 
@@ -574,82 +513,131 @@ impl Plugin for Gain {
                             let out_meter_normalized = (out_meter + 60.0) / 60.0;
                             ui.allocate_space(egui::Vec2::splat(2.0));
                             let mut out_meter_obj = db_meter::DBMeter::new(out_meter_normalized).text(out_meter_text);
-                            out_meter_obj.set_background_color(A_KNOB_OUTSIDE_COLOR);
-                            out_meter_obj.set_bar_color(A_KNOB_INSIDE_COLOR);
+                            out_meter_obj.set_background_color(TEAL);
+                            out_meter_obj.set_bar_color(BEIGE);
                             out_meter_obj.set_border_color(Color32::BLACK);
                             ui.add(out_meter_obj);
 
                             ui.horizontal(|ui| {
-                                let knob_size = 40.0;
+                                let knob_size = 42.0;
+                                let text_size = 12.0;
                                 ui.vertical(|ui| {
-                                    let mut gain_knob = ui_knob::ArcKnob::for_param(&params.free_gain, setter, knob_size);
-                                    gain_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                    gain_knob.set_fill_color(A_KNOB_OUTSIDE_COLOR2);
-                                    gain_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    let gain_knob = ui_knob::ArcKnob::for_param(
+                                        &params.free_gain, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(BEIGE)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("Input gain into Subhoofer".to_string());
                                     ui.add(gain_knob);
 
-                                    let mut output_knob = ui_knob::ArcKnob::for_param(&params.output_gain, setter, knob_size);
-                                    output_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                    output_knob.set_fill_color(A_KNOB_OUTSIDE_COLOR2);
-                                    output_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    let output_knob = ui_knob::ArcKnob::for_param(
+                                        &params.output_gain, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(BEIGE)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("Output gain from Subhoofer".to_string());
                                     ui.add(output_knob);
+
+                                    let algorithm_knob = ui_knob::ArcKnob::for_param(
+                                        &params.h_algorithm, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(BEIGE)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("The saturation/harmonic algorithm used".to_string());
+                                    ui.add(algorithm_knob);
                                 
-                                    let mut dry_wet_knob = ui_knob::ArcKnob::for_param(&params.dry_wet, setter, knob_size);
-                                    dry_wet_knob.preset_style(ui_knob::KnobStyle::SmallTogether);
-                                    dry_wet_knob.set_fill_color(A_KNOB_OUTSIDE_COLOR2);
-                                    dry_wet_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    let dry_wet_knob = ui_knob::ArcKnob::for_param(
+                                        &params.dry_wet, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(BEIGE)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("The blend of unprocessed/processed signal".to_string());
                                     ui.add(dry_wet_knob);
                                 });
 
                                 ui.vertical(|ui| {
-                                    let mut hardness_knob = ui_knob::ArcKnob::for_param(&params.hoof_hardness, setter, knob_size + 16.0);
-                                    hardness_knob.preset_style(ui_knob::KnobStyle::MediumThin);
-                                    hardness_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    hardness_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    let hardness_knob = ui_knob::ArcKnob::for_param(
+                                        &params.hoof_hardness, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(LIGHT_GREY)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("The amount of saturation Subhoofer uses".to_string());
                                     ui.add(hardness_knob);
 
-                                    let mut harmonics_knob = ui_knob::ArcKnob::for_param(&params.harmonics, setter, knob_size + 16.0);
-                                    harmonics_knob.preset_style(ui_knob::KnobStyle::SmallMedium);
-                                    harmonics_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    harmonics_knob.set_line_color(A_KNOB_OUTSIDE_COLOR);
+                                    let harmonics_knob = ui_knob::ArcKnob::for_param(
+                                        &params.harmonics, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(LIGHT_GREY)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("The strength of harmonics added to signal".to_string());
                                     ui.add(harmonics_knob);
-                                });
 
-                                ui.vertical(|ui| {
-                                    let mut sub_gain_knob = ui_knob::ArcKnob::for_param(&params.sub_gain, setter, knob_size);
-                                    sub_gain_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
-                                    sub_gain_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    sub_gain_knob.set_line_color(A_KNOB_OUTSIDE_COLOR2);
+                                    let sub_gain_knob = ui_knob::ArcKnob::for_param(
+                                        &params.sub_gain, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(LIGHT_GREY)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("Gain for the sub layer".to_string());
                                     ui.add(sub_gain_knob);
                                 
-                                    let mut sub_drive_knob = ui_knob::ArcKnob::for_param(&params.sub_drive, setter, knob_size);
-                                    sub_drive_knob.preset_style(ui_knob::KnobStyle::LargeMedium);
-                                    sub_drive_knob.set_fill_color(A_KNOB_INSIDE_COLOR);
-                                    sub_drive_knob.set_line_color(A_KNOB_OUTSIDE_COLOR2);
+                                    let sub_drive_knob = ui_knob::ArcKnob::for_param(
+                                        &params.sub_drive, 
+                                        setter, 
+                                        knob_size, 
+                                        ui_knob::KnobLayout::Horizonal)
+                                            .preset_style(ui_knob::KnobStyle::Preset1)
+                                            .set_fill_color(TEAL)
+                                            .set_line_color(LIGHT_GREY)
+                                            .set_text_size(text_size)
+                                            .set_hover_text("Drive into the sub algorithm".to_string());
                                     ui.add(sub_drive_knob);
-
-                                    // Deer
-                                    ui.label(RichText::new(r"  ((        ))
-   \\      //
- _| \\____// |__
-\~~/ ~    ~\/~~~/
- -(|    _/o  ~.-
-   /  /     ,|
-  (~~~)__.-\ |
-   ``-     | |
-    |      | |
-    |        |
-").font(FontId::monospace(10.0)).color(A_KNOB_OUTSIDE_COLOR2));
                                 });
                             });
                             //sliders
-                            ui.vertical(|ui| {
-                                ui.label("Harmonic Algorithm");
-                                ui.add(widgets::ParamSlider::for_param(&params.h_algorithm, setter).with_width(100.0));
-                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics1, setter).with_width(200.0));
-                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics2, setter).with_width(200.0));
-                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics3, setter).with_width(200.0));
-                                ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics4, setter).with_width(200.0));
+                            ui.horizontal(|ui|{
+                                ui.add_space(16.0);
+                                ui.vertical(|ui| {
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics1, setter).with_width(170.0))
+                                        .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
+Double-click to reset");
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics2, setter).with_width(170.0))
+                                        .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
+Double-click to reset");
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics3, setter).with_width(170.0))
+                                        .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
+Double-click to reset");
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics4, setter).with_width(170.0))
+                                        .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
+Double-click to reset");
+                                });
                             });
                         });
                         
@@ -851,9 +839,24 @@ impl Plugin for Gain {
             
             // Add: Original signal + Harmonics + Sub signal
             match h_algorithm {
-                AlgorithmType::ABass => {
-                    processed_sample_l = a_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
-                    processed_sample_r = a_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                AlgorithmType::ABass2 => {
+                    // Ardura's new Algorithm for 2024
+                    processed_sample_l = custom_sincos_saturation(
+                        in_l, 
+                        harmonics * 31.422043, 
+                        harmonics * 189.29568, 
+                        harmonics * 25.0, 
+                        harmonics * 26.197401) + (sub_bump * sub_gain);
+                    processed_sample_r = custom_sincos_saturation(
+                        in_l, 
+                        harmonics * 31.422043, 
+                        harmonics * 189.29568, 
+                        harmonics * 25.0, 
+                        harmonics * 26.197401) + (sub_bump * sub_gain);
+                    let h_l = (processed_sample_l * 2.0) - processed_sample_l.powf(2.0);
+                    let h_r = (processed_sample_r * 2.0) - processed_sample_r.powf(2.0);
+                    processed_sample_l += h_l * 0.0070118904;
+                    processed_sample_r += h_r * 0.0070118904;
                 },
                 AlgorithmType::BBass => {
                     // C3 signal in RBass is C3, C4, G4, C5, E5, A#5, D6, F#6
@@ -869,14 +872,9 @@ impl Plugin for Gain {
                     processed_sample_l = tape_saturation(in_l, harmonics);
                     processed_sample_r = tape_saturation(in_r, harmonics);
                 },
-                AlgorithmType::ABass2 => {
-                    // RBass inspired but skipping first and second harmonic multiplication
-                    processed_sample_l = custom_sincos_saturation(in_l, harmonics*0.0, harmonics*0.0, harmonics*77.29513, harmonics*112.16742) + (sub_bump * sub_gain);
-                    processed_sample_r = custom_sincos_saturation(in_l, harmonics*0.0, harmonics*0.0, harmonics*77.29513, harmonics*112.16742) + (sub_bump * sub_gain);
-                },
                 AlgorithmType::CustomSliders => {
                     processed_sample_l = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
-                    processed_sample_r = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
+                    processed_sample_r = custom_sincos_saturation(in_r, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
                 },
             }
 
@@ -957,7 +955,7 @@ impl Plugin for Gain {
 
     const HARD_REALTIME_ONLY: bool = false;
 
-    fn task_executor(self: &Gain) -> TaskExecutor<Self> {
+    fn task_executor(&mut self) -> TaskExecutor<Self> {
         // In the default implementation we can simply ignore the value
         Box::new(|_| ())
     }
