@@ -7,7 +7,7 @@ use CustomWidgets::{db_meter, ui_knob};
 use std::{sync::{Arc}, ops::RangeInclusive};
 
 /***************************************************************************
- * Subhoofer v2.1.0 by Ardura
+ * Subhoofer v2.2.0 by Ardura
  * 
  * Build with: cargo xtask bundle Subhoofer --profile <release or profiling>
  * *************************************************************************/
