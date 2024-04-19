@@ -118,11 +118,13 @@ fn chebyshev_tape(sample: f32, drive: f32) -> f32 {
 
 // Modified tape saturation using transfer function from Duro Console
 fn tape_saturation(input_signal: f32, drive: f32) -> f32 {
-    if drive == 0.0 { return 0.0; }
     let idrive = drive;
     // Define the transfer curve for the tape saturation effect
     let transfer = |x: f32| -> f32 {
-        (x * idrive).tanh()
+        // Smoothly transition to linear function as drive approaches 0.0
+        let tanh_saturation = (x * idrive).tanh();
+        let linear_saturation = x * idrive;
+        tanh_saturation + (linear_saturation - tanh_saturation) * 0.5
     };
     // Apply the transfer curve to the input sample
     let output_sample = transfer(input_signal);
@@ -152,13 +154,7 @@ fn b_bass_saturation(signal: f32, mut harmonic_strength: f32) -> f32 {
             summed += harmonic_component;
         }
     }
-    if harmonic_strength > 0.0
-    {
-        summed - signal
-    }
-    else {
-        0.0
-    }
+    summed - signal
 }
 
 
@@ -864,13 +860,18 @@ Double-click to reset");
                     processed_sample_r = b_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
                 AlgorithmType::CBass => {
-                    processed_sample_l = c_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
-                    processed_sample_r = c_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    if harmonics > 0.0 {
+                        processed_sample_l = c_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                        processed_sample_r = c_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    } else {
+                        processed_sample_l = sub_bump * sub_gain;
+                        processed_sample_r = sub_bump * sub_gain;
+                    }
                 }
                 AlgorithmType::TanH => {
                     // Generate tanh curve harmonics gently
-                    processed_sample_l = tape_saturation(in_l, harmonics);
-                    processed_sample_r = tape_saturation(in_r, harmonics);
+                    processed_sample_l = tape_saturation(in_l, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_r = tape_saturation(in_r, harmonics) + (sub_bump * sub_gain);
                 },
                 AlgorithmType::CustomSliders => {
                     processed_sample_l = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
