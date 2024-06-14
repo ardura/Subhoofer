@@ -46,8 +46,17 @@ Drag the vst3 file into your "C:\Program Files\Common Files\VST3" directory or w
 Done!
 
 ## Examples and comparison
-This is a sine wave run through Renaissance Bass and Subhoofer, then to SPAN:
+
+### RBass
+This is a sine wave run through Renaissance Bass(top), and also Subhoofer(bottom):
 ![Screenshot 2024-04-17 100658](https://github.com/ardura/Subhoofer/assets/31751444/2314b7bf-6a81-4d19-9615-2510cdad6a2b)
+
+### LoAir
+This is a sine wave where Subhoofer generates the harmonic below similar to LoAir
+Before:
+![image](https://github.com/ardura/Subhoofer/assets/31751444/b80db02f-5f46-4378-84f7-96a11fe836f8)
+After (extreme setting):
+![image](https://github.com/ardura/Subhoofer/assets/31751444/64972c00-2d91-4f05-a3ee-ff91867da8b3)
 
 ## Known issues
 ● xcb flags as a security issue for some unchecked casts and unsafe returns from functions in a dependency
