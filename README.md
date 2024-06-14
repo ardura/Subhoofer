@@ -52,10 +52,13 @@ This is a sine wave run through Renaissance Bass and Subhoofer, then to SPAN:
 ## Known issues
 ● xcb flags as a security issue for some unchecked casts and unsafe returns from functions in a dependency
 
-## Building
+## Building/Compiling Subhoofer Manually
+- You should do this if the precompiled binary fails or you have a unique system configuration (like linux)
 
-After installing [Rust](https://rustup.rs/), you can compile Subhoofer as follows:
-
+After installing [Rust](https://rustup.rs/) on your system (and possibly restarting your terminal session), you can compile Actuate as follows:
+1. Make sure your dependencies are installed. These are the packages you will need at minimum: `libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev libxkbcommon-x11-dev libatk1.0-dev build-essential libgtk-3-dev libxcb-dri2-0-dev libxcb-icccm4-dev libx11-xcb-dev`
+   - Note I have also found on some systems `libc6` or `glibc` needs to be installed depending on your configuration
+2. Run the build process in a terminal from the Subhoofer root directory
 ```
 cargo xtask bundle Subhoofer --profile release
 ```
@@ -63,6 +66,17 @@ Or use the following for debugging:
 ```
 cargo xtask bundle Subhoofer --profile profiling
 ```
+3. Your outputs will be in the Subhoofer/target/bundled directory.
+4. the `*.clap` you can copy to your clap directory/path, the vst3 one needs the folder structure copied on linux
+
+## Other Build information
+The builds on GitHub and KVR are VST3 and CLAP format, and are compiled on the following machine types:
+- Ubuntu 22.04
+- Windows' 2022 build (Win10? The Github runner just lists "Windows-2022")
+- MacOS 12
+- The MacOS M1 build is on OS 14
+
+## Thanks!
 
 This plugin was made possible thanks to the Nih-Plug Rust Library, the egui GUI library, and
 Airwindows source code thankfully being MIT licensed which helped me learn. I highly recommend supporting Chris
