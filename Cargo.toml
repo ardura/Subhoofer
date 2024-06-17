@@ -15,6 +15,7 @@ crate-type = ["cdylib","lib"]
 
 [dependencies]
 atomic_float = "0.1"
+color-backtrace = "0.6.1"
 lazy_static = "1.4.0"
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225", features = ["assert_process_allocs"] }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225"}

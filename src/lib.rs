@@ -4,7 +4,7 @@ use atomic_float::AtomicF32;
 use nih_plug::{prelude::*};
 use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState, widgets};
 use CustomWidgets::{db_meter, ui_knob};
-use std::{sync::{Arc}, ops::RangeInclusive};
+use std::{ops::RangeInclusive, sync::Arc};
 
 /***************************************************************************
  * Subhoofer v2.2.0 by Ardura
@@ -654,6 +654,9 @@ Double-click to reset");
         // After `PEAK_METER_DECAY_MS` milliseconds of pure silence, the peak meter's value should
         // have dropped by 12 dB
         self.out_meter_decay_weight = 0.25f64.powf((buffer_config.sample_rate as f64 * PEAK_METER_DECAY_MS / 1000.0).recip()) as f32;
+        
+        nih_dbg!("Plugin started successfully");
+        color_backtrace::install();
 
         true
     }
@@ -963,9 +966,13 @@ Double-click to reset");
 
     fn filter_state(_state: &mut PluginState) {}
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        nih_dbg!("Plugin resetting...");
+    }
 
-    fn deactivate(&mut self) {}
+    fn deactivate(&mut self) {
+        nih_dbg!("Plugin deactivating...");
+    }
 }
 
 impl ClapPlugin for Subhoofer {
@@ -975,9 +982,7 @@ impl ClapPlugin for Subhoofer {
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
         ClapFeature::AudioEffect,
-        ClapFeature::Stereo,
-        ClapFeature::Mono,
-        ClapFeature::Utility,
+        ClapFeature::Distortion
     ];
 }
 
