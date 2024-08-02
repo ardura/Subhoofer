@@ -2,19 +2,22 @@
 mod CustomWidgets;
 use atomic_float::AtomicF32;
 use nih_plug::{prelude::*};
-use nih_plug_egui::{create_egui_editor, egui::{self, Color32, Rect, Rounding, RichText, FontId, Pos2}, EguiState, widgets};
+use nih_plug_egui::{create_egui_editor, egui::{self, Color32, FontId, Pos2, Rect, RichText, Rounding}, widgets, EguiState};
 use CustomWidgets::{db_meter, ui_knob};
-use std::{ops::RangeInclusive, sync::Arc};
+use std::{f32::consts::PI, ops::RangeInclusive, sync::Arc};
+mod SweetenX;
 
 /***************************************************************************
- * Subhoofer v2.2.0 by Ardura
+ * Subhoofer v2.2.2 by Ardura
  * 
  * Build with: cargo xtask bundle Subhoofer --profile <release or profiling>
  * *************************************************************************/
 
  #[derive(Enum, PartialEq, Eq, Debug, Copy, Clone)]
  pub enum AlgorithmType{
-    #[name = "A Bass New"]
+    #[name = "A Bass 3"]
+    ABass3,
+    #[name = "A Bass 2"]
     ABass2,
     #[name = "8 Harmonic Stack"]
     BBass,
@@ -97,6 +100,9 @@ pub struct Subhoofer {
     // The current data for the different meters
     out_meter: Arc<AtomicF32>,
     in_meter: Arc<AtomicF32>,
+
+    // Buffer for SweetenX
+    buffer: [f32; 16],
 }
 
 // Modified function from Duro Console for different behavior - hoof hardness
@@ -286,6 +292,7 @@ impl Default for Subhoofer {
             sub_octave: false,
             was_negative: false,
             bass_flip_counter: 1,
+            buffer: [0.0; 16],
         }
     }
 }
@@ -349,14 +356,14 @@ impl Default for SubhooferParams {
             // Harmonics Parameter
             harmonics: FloatParam::new(
                 "Harmonics",
-                0.000668,
+                0.000580,
                 FloatRange::Skewed { min: 0.0, max: 1.0, factor: FloatRange::skew_factor(-2.8) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonics")
             .with_value_to_string(formatters::v2s_f32_percentage(4)),
 
-            h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass2),
+            h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass3),
 
 
             // Custom Harmonics Parameter 1
@@ -398,7 +405,7 @@ impl Default for SubhooferParams {
             // Output gain parameter
             output_gain: FloatParam::new(
                 "Output Gain",
-                util::db_to_gain(-2.9),
+                util::db_to_gain(0.0),
                 FloatRange::Skewed {
                     min: util::db_to_gain(-12.0),
                     max: util::db_to_gain(12.0),
@@ -636,8 +643,6 @@ Double-click to reset");
                                 });
                             });
                         });
-                        
-
                     });
                 }
             )
@@ -665,7 +670,7 @@ Double-click to reset");
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         for mut channel_samples in buffer.iter_samples() {
             let mut out_amplitude: f32 = 0.0;
@@ -694,7 +699,7 @@ Double-click to reset");
             fake_random /= 2.0;
 
             // Scale the head bump freqeuncy for Subhoof
-            let sample_rate: f32 = _context.transport().sample_rate;
+            let sample_rate: f32 = context.transport().sample_rate;
             let mut overall_scale: f32 = 1.0;
             overall_scale /= 44100.0;
             overall_scale *= sample_rate;
@@ -714,6 +719,8 @@ Double-click to reset");
             // Normalize really small values
             if in_l.abs() < 1.18e-23 { in_l = 0.1 * 1.18e-17; }
             if in_r.abs() < 1.18e-23 { in_r = 0.1 * 1.18e-17; }
+
+            let mut sub_bump: f32;
 
             // Sub voicing variables
             let sub_headbump_freq: f32 = (((hoof_hardness) * 0.1) + 0.02) / overall_scale;
@@ -773,19 +780,19 @@ Double-click to reset");
 
             // Regain some volume now that we have sampled
             head_bump = head_bump * 256.0;
-            
+
             // Calculate drive samples based off the processing so far
             self.iir_sample_w = (self.iir_sample_w * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_w;
 			self.iir_sample_x = (self.iir_sample_x * (1.0 - self.sub_iir)) + (head_bump * self.sub_iir);    head_bump -= self.iir_sample_x;
-            
+
             // Create SubBump sample from our head bump to modify further
-			let mut sub_bump: f32 = head_bump;
+			sub_bump = head_bump;
 			self.iir_sample_y = (self.iir_sample_y * (1.0 - self.sub_iir)) + (sub_bump * self.sub_iir);    sub_bump -= self.iir_sample_y;
-            
+
             // Calculate sub drive samples based off what we've done so far		
             self.iir_drive_sample_c = (self.iir_drive_sample_c * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_c;
             self.iir_drive_sample_d = (self.iir_drive_sample_d * (1.0 - sub_headbump_freq)) + (sub_bump * sub_headbump_freq);   sub_bump = self.iir_drive_sample_d;
-            
+
             // Flip the bump sample per sub octave for half-freq
             sub_bump = sub_bump.abs();
             sub_bump = if self.sub_octave == false { -sub_bump } else { sub_bump };
@@ -838,6 +845,73 @@ Double-click to reset");
             
             // Add: Original signal + Harmonics + Sub signal
             match h_algorithm {
+                AlgorithmType::ABass3 => {
+                    let harmonic2_l: f32;
+                    let harmonic2_r: f32;
+                    let harmonic3_l: f32;
+                    let harmonic3_r: f32;
+                    let harmonic4_l: f32;
+                    let harmonic4_r: f32;
+                    let harmonic5_l: f32;
+                    let harmonic5_r: f32;
+                    let harmonic6_l: f32;
+                    let harmonic6_r: f32;
+                    let harmonic7_l: f32;
+                    let harmonic7_r: f32;
+                    let harmonic8_l: f32;
+                    let harmonic8_r: f32;
+                    let harmonic9_l: f32;
+                    let harmonic9_r: f32;
+                    let harmonic10_l: f32;
+                    let harmonic10_r: f32;
+                    let harmonic11_l: f32;
+                    let harmonic11_r: f32;
+                    let harmonic12_l: f32;
+                    let harmonic12_r: f32;
+                    let harmonic13_l: f32;
+                    let harmonic13_r: f32;
+                    let harmonic14_l: f32;
+                    let harmonic14_r: f32;
+
+                    (harmonic2_l, harmonic2_r) = SweetenX::process(in_l, in_r, overall_scale, 26.470589, 2, &mut self.buffer);
+                    (harmonic3_l, harmonic3_r) = SweetenX::process(in_l, in_r, overall_scale, 8.941176, 3, &mut self.buffer);
+                    (harmonic4_l, harmonic4_r) = SweetenX::process(in_l, in_r, overall_scale, 0.1764706, 4, &mut self.buffer);
+                    (harmonic5_l, harmonic5_r) = SweetenX::process(in_l, in_r, overall_scale, 0.0, 5, &mut self.buffer);
+                    (harmonic6_l, harmonic6_r) = SweetenX::process(in_l, in_r, overall_scale, 0.0, 6, &mut self.buffer);
+                    (harmonic7_l, harmonic7_r) = SweetenX::process(in_l, in_r, overall_scale, 0.0, 7, &mut self.buffer);
+                    (harmonic8_l, harmonic8_r) = SweetenX::process(in_l, in_r, overall_scale, 0.0, 8, &mut self.buffer);
+                    (harmonic9_l, harmonic9_r) = SweetenX::process(in_l, in_r, overall_scale, 171.76471, 9, &mut self.buffer);
+
+                    let octave_l = in_l * in_l * in_l * in_l * in_l * 0.5;
+                    let octave_r = in_r * in_r * in_r * in_r * in_r * 0.5;
+                    // Start from 5th
+                    (harmonic10_l, harmonic10_r) = SweetenX::process(octave_l, octave_r, overall_scale, 0.0, 2, &mut self.buffer);
+                    (harmonic11_l, harmonic11_r) = SweetenX::process(octave_l, octave_r, overall_scale, 4000.0, 3, &mut self.buffer);
+                    (harmonic12_l, harmonic12_r) = SweetenX::process(octave_l, octave_r, overall_scale, 11764706.0, 4, &mut self.buffer);
+                    (harmonic13_l, harmonic13_r) = SweetenX::process(octave_l, octave_r, overall_scale, 5294118000.0, 5, &mut self.buffer);
+                    (harmonic14_l, harmonic14_r) = SweetenX::process(octave_l, octave_r, overall_scale, 17647059000.0, 6, &mut self.buffer);
+
+                    processed_sample_l = in_l;
+                    processed_sample_r = in_r;
+
+                    // Sum all harmonics into the processed sample
+                    //processed_sample_l += harmonic2_l + harmonic3_l + (harmonic7_l - harmonic5_l*2.0 - harmonic3_l*2.0 - harmonic2_l*2.0) + (harmonic9_l - harmonic2_l*2.0) + (sub_bump * sub_gain);
+                    processed_sample_l += (harmonic2_l + harmonic3_l + harmonic4_l + harmonic5_l + 
+                        harmonic6_l + harmonic7_l + harmonic8_l + harmonic9_l + 
+                        harmonic10_l + harmonic11_l + harmonic12_l + harmonic13_l + 
+                        harmonic14_l)*(harmonics * 1497.00599) + (sub_bump * sub_gain);
+                    //processed_sample_r += harmonic2_r + harmonic3_r + (harmonic7_r - harmonic5_r*2.0 - harmonic3_r*2.0 - harmonic2_r*2.0) + (harmonic9_r - harmonic2_r*2.0) + (sub_bump * sub_gain);
+                    processed_sample_r += (harmonic2_r + harmonic3_r + harmonic4_r + harmonic5_r + 
+                        harmonic6_r + harmonic7_r + harmonic8_r + harmonic9_r + 
+                        harmonic10_r + harmonic11_r + harmonic12_r + harmonic13_r + 
+                        harmonic14_r)*(harmonics * 1497.00599) + (sub_bump * sub_gain);
+
+                    // Scaling
+                    let scale = util::db_to_gain(-21.2);
+                    processed_sample_l *= scale;
+                    processed_sample_r *= scale;
+
+                }
                 AlgorithmType::ABass2 => {
                     // Ardura's new Algorithm for 2024
                     processed_sample_l = custom_sincos_saturation(
@@ -856,11 +930,15 @@ Double-click to reset");
                     let h_r = (processed_sample_r * 2.0) - processed_sample_r.powf(2.0);
                     processed_sample_l += h_l * 0.0070118904;
                     processed_sample_r += h_r * 0.0070118904;
+                    processed_sample_l = util::db_to_gain(-2.4)*processed_sample_l;
+                    processed_sample_r = util::db_to_gain(-2.4)*processed_sample_r;
                 },
                 AlgorithmType::BBass => {
                     // C3 signal in RBass is C3, C4, G4, C5, E5, A#5, D6, F#6
                     processed_sample_l = b_bass_saturation(in_l, harmonics) + (sub_bump * sub_gain);
                     processed_sample_r = b_bass_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_l = util::db_to_gain(8.7)*processed_sample_l;
+                    processed_sample_r = util::db_to_gain(8.7)*processed_sample_r;
                 },
                 AlgorithmType::CBass => {
                     if harmonics > 0.0 {
@@ -875,16 +953,32 @@ Double-click to reset");
                     // Generate tanh curve harmonics gently
                     processed_sample_l = tape_saturation(in_l, harmonics) + (sub_bump * sub_gain);
                     processed_sample_r = tape_saturation(in_r, harmonics) + (sub_bump * sub_gain);
+                    processed_sample_l = util::db_to_gain(8.0)*processed_sample_l;
+                    processed_sample_r = util::db_to_gain(8.0)*processed_sample_r;
                 },
                 AlgorithmType::CustomSliders => {
                     processed_sample_l = custom_sincos_saturation(in_l, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
                     processed_sample_r = custom_sincos_saturation(in_r, harmonics*custom_harmonics1, harmonics*custom_harmonics2, harmonics*custom_harmonics3, harmonics*custom_harmonics4) + (sub_bump * sub_gain);
+                    processed_sample_l = util::db_to_gain(-4.2)*processed_sample_l;
+                    processed_sample_r = util::db_to_gain(-4.2)*processed_sample_r;
                 },
             }
 
             // Hardness Saturation
-            processed_sample_l = chebyshev_tape(processed_sample_l, hoof_hardness);
-            processed_sample_r = chebyshev_tape(processed_sample_r, hoof_hardness);
+            if h_algorithm == AlgorithmType::ABass3 {
+                let leaf_wet_l: f32;
+                let leaf_wet_r: f32;
+                let threshold: f32 = util::db_to_gain(-30.0);
+                leaf_wet_l = leaf_saturation(in_l, threshold, 0.5);
+                leaf_wet_r = leaf_saturation(in_r, threshold, 0.5);
+                let scaler = 0.0016129*hoof_hardness*100.0; //0.0015 default;
+                processed_sample_l = scaler*leaf_wet_l + (1.0 - scaler)*processed_sample_l;
+                processed_sample_r = scaler*leaf_wet_r + (1.0 - scaler)*processed_sample_r;
+            } else {
+                processed_sample_l = chebyshev_tape(processed_sample_l, hoof_hardness);
+                processed_sample_r = chebyshev_tape(processed_sample_r, hoof_hardness);
+            }
+            
             
             // Increment/change the bass_flip_counter
             self.bass_flip_counter += 1;
@@ -994,3 +1088,17 @@ impl Vst3Plugin for Subhoofer {
 
 nih_export_clap!(Subhoofer);
 nih_export_vst3!(Subhoofer);
+
+// "Leaf" Saturation designed by Ardura
+fn leaf_saturation(input_signal: f32, threshold: f32, drive: f32) -> f32 {
+    let range = 6.0;
+    let min_value = 1.0;
+    let drive_db = min_value + drive * range;
+    let signal_holder = input_signal * util::db_to_gain(drive_db);
+    
+    let curve = (signal_holder / 999.0).powf(2.0);
+
+    let mut y = signal_holder / threshold;
+    y = (2.0 / PI) * y.atan();
+    (threshold + (1.0 - threshold) * curve) * y
+}
