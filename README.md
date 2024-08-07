@@ -27,7 +27,9 @@ The default settings are already configured to mimic a bass plugin of renaissanc
 
 ● Harmonic Algorithm - The methods used to generate harmonics:
 
-    ● A Bass New: Ardura's algorithm updated in 2024 for bass enhancement
+    ● A Bass 3: Ardura's algorithm remade generating harmonics differently
+    
+    ● A Bass 2: Ardura's algorithm updated in 2024 for bass enhancement
     
     ● 8 Harmonic Stack: An 8 harmonic stack with a different low-focus than Algorithm 1
     
@@ -48,8 +50,8 @@ Done!
 ## Examples and comparison
 
 ### RBass
-This is a sine wave run through Renaissance Bass(top), and also Subhoofer(bottom):
-![Screenshot 2024-04-17 100658](https://github.com/ardura/Subhoofer/assets/31751444/2314b7bf-6a81-4d19-9615-2510cdad6a2b)
+This is a sine wave run through Renaissance Bass(Green), and also Subhoofer(Red):
+![image](https://github.com/user-attachments/assets/19e72cac-87cb-4889-9a9a-f0b5fb5abcaa)
 
 ### LoAir
 This is a sine wave where Subhoofer generates the harmonic below similar to LoAir
