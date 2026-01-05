@@ -373,7 +373,7 @@ impl Default for SubhooferParams {
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonic 1")
-            .with_step_size(0.00001),
+            .with_step_size(0.000001),
 
             // Custom Harmonics Parameter 2
             custom_harmonics2: FloatParam::new(
@@ -383,7 +383,7 @@ impl Default for SubhooferParams {
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonic 2")
-            .with_step_size(0.00001),
+            .with_step_size(0.000001),
 
             // Custom Harmonics Parameter 3
             custom_harmonics3: FloatParam::new(
@@ -393,7 +393,7 @@ impl Default for SubhooferParams {
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonic 3")
-            .with_step_size(0.00001),
+            .with_step_size(0.000001),
 
             // Custom Harmonics Parameter 4
             custom_harmonics4: FloatParam::new(
@@ -403,7 +403,7 @@ impl Default for SubhooferParams {
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
             .with_unit(" Harmonic 4")
-            .with_step_size(0.00001),
+            .with_step_size(0.000001),
 
             // Output gain parameter
             output_gain: FloatParam::new(
