@@ -2,13 +2,13 @@
 mod CustomWidgets;
 use atomic_float::AtomicF32;
 use nih_plug::{prelude::*};
-use nih_plug_egui::{create_egui_editor, egui::{self, Color32, FontId, Pos2, Rect, RichText, Rounding}, widgets, EguiState};
+use nih_plug_egui::{EguiState, create_egui_editor, egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText}, widgets};
 use CustomWidgets::{db_meter, ui_knob};
 use std::{f32::consts::PI, ops::RangeInclusive, sync::Arc};
 mod SweetenX;
 
 /***************************************************************************
- * Subhoofer v2.2.2 by Ardura
+ * Subhoofer v2.2.3 by Ardura
  * 
  * Build with: cargo xtask bundle Subhoofer --profile <release or profiling>
  * *************************************************************************/
@@ -365,42 +365,45 @@ impl Default for SubhooferParams {
 
             h_algorithm: EnumParam::new("Harmonic Algorithm", AlgorithmType::ABass3),
 
-
             // Custom Harmonics Parameter 1
             custom_harmonics1: FloatParam::new(
-                "Custom Harmonic 1",
+                "Harmonic 1",
                 0.0,
                 FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" Custom Harmonic 1"),
+            .with_unit(" Harmonic 1")
+            .with_step_size(0.00001),
 
             // Custom Harmonics Parameter 2
             custom_harmonics2: FloatParam::new(
-                "Custom Harmonic 2",
+                "Harmonic 2",
                 0.0,
                 FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" Custom Harmonic 2"),
+            .with_unit(" Harmonic 2")
+            .with_step_size(0.00001),
 
             // Custom Harmonics Parameter 3
             custom_harmonics3: FloatParam::new(
-                "Custom Harmonic 3",
+                "Harmonic 3",
                 0.0,
                 FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" Custom Harmonic 3"),
+            .with_unit(" Harmonic 3")
+            .with_step_size(0.00001),
 
             // Custom Harmonics Parameter 4
             custom_harmonics4: FloatParam::new(
-                "Custom Harmonic 4",
+                "Harmonic 4",
                 0.0,
                 FloatRange::Skewed { min: 0.0, max: 400.0, factor: FloatRange::skew_factor(-2.0) }
             )
             .with_smoother(SmoothingStyle::Linear(30.0))
-            .with_unit(" Custom Harmonic 4"),
+            .with_unit(" Harmonic 4")
+            .with_step_size(0.00001),
 
             // Output gain parameter
             output_gain: FloatParam::new(
@@ -476,7 +479,7 @@ impl Plugin for Subhoofer {
                             Rect::from_x_y_ranges(
                                 RangeInclusive::new(0.0, WIDTH as f32), 
                                 RangeInclusive::new(0.0, HEIGHT as f32)), 
-                            Rounding::from(16.0), NAVY_BLUE);
+                            CornerRadius::from(16.0), NAVY_BLUE);
 
                         // Screws for that vintage look
                         let screw_space = 10.0;
@@ -522,7 +525,7 @@ impl Plugin for Subhoofer {
                             ui.add(out_meter_obj);
 
                             ui.horizontal(|ui| {
-                                let knob_size = 42.0;
+                                let knob_size = 40.0;
                                 let text_size = 12.0;
                                 ui.vertical(|ui| {
                                     let gain_knob = ui_knob::ArcKnob::for_param(
@@ -626,18 +629,18 @@ impl Plugin for Subhoofer {
                             });
                             //sliders
                             ui.horizontal(|ui|{
-                                ui.add_space(16.0);
+                                ui.add_space(10.0);
                                 ui.vertical(|ui| {
-                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics1, setter).with_width(170.0))
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics1, setter).with_width(180.0))
                                         .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
 Double-click to reset");
-                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics2, setter).with_width(170.0))
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics2, setter).with_width(180.0))
                                         .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
 Double-click to reset");
-                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics3, setter).with_width(170.0))
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics3, setter).with_width(180.0))
                                         .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
 Double-click to reset");
-                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics4, setter).with_width(170.0))
+                                    ui.add(widgets::ParamSlider::for_param(&params.custom_harmonics4, setter).with_width(180.0))
                                         .on_hover_text_at_pointer("Add harmonics when using \"Custom\" Algorithm
 Double-click to reset");
                                 });
@@ -648,8 +651,6 @@ Double-click to reset");
             )
     }
 
-    
-
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
@@ -659,9 +660,6 @@ Double-click to reset");
         // After `PEAK_METER_DECAY_MS` milliseconds of pure silence, the peak meter's value should
         // have dropped by 12 dB
         self.out_meter_decay_weight = 0.25f64.powf((buffer_config.sample_rate as f64 * PEAK_METER_DECAY_MS / 1000.0).recip()) as f32;
-        
-        nih_dbg!("Plugin started successfully");
-        color_backtrace::install();
 
         true
     }
@@ -1060,13 +1058,9 @@ Double-click to reset");
 
     fn filter_state(_state: &mut PluginState) {}
 
-    fn reset(&mut self) {
-        nih_dbg!("Plugin resetting...");
-    }
+    fn reset(&mut self) {}
 
-    fn deactivate(&mut self) {
-        nih_dbg!("Plugin deactivating...");
-    }
+    fn deactivate(&mut self) {}
 }
 
 impl ClapPlugin for Subhoofer {

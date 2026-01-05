@@ -4,26 +4,25 @@
 
 use std::{
     f32::consts::TAU,
-    ops::{Add, Mul, Sub},
+    ops::{Add, Mul, Sub}, sync::LazyLock,
 };
 
-use lazy_static::lazy_static;
 use nih_plug::prelude::{Param, ParamSetter};
 use nih_plug_egui::egui::{
-    self, epaint::{CircleShape, PathShape}, pos2, Align2, Color32, FontId, Pos2, Rect, Response, Rgba, Rounding, Sense, Shape, Stroke, Ui, Vec2, Widget
+    self,
+    epaint::{CircleShape, PathShape, PathStroke},
+    pos2, Align2, Color32, FontId, Pos2, Rect, Response, Rgba, CornerRadius, Sense, Shape, Stroke, Ui,
+    Vec2, Widget,
 };
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
 /// noramlized parameter.
-const GRANULAR_DRAG_MULTIPLIER: f32 = 0.001;
+const GRANULAR_DRAG_MULTIPLIER: f32 = 0.00001;
+const SEMI_GRANULAR_DRAG_MULTIPLIER: f32 = 0.0001;
 const NORMAL_DRAG_MULTIPLIER: f32 = 0.005;
 
-lazy_static! {
-    //static ref DRAG_NORMALIZED_START_VALUE_MEMORY_ID: egui::Id = egui::Id::new((file!(), rand::random::<i64>()));
-    static ref DRAG_NORMALIZED_START_VALUE_MEMORY_ID: egui::Id = egui::Id::new((file!(), 0));
-    static ref DRAG_AMOUNT_MEMORY_ID: egui::Id = egui::Id::new((file!(), 1));
-    static ref VALUE_ENTRY_MEMORY_ID: egui::Id = egui::Id::new((file!(), 2));
-}
+static DRAG_NORMALIZED_START_VALUE_MEMORY_ID: LazyLock<egui::Id> = LazyLock::new(|| egui::Id::new((file!(), 0)));
+static DRAG_AMOUNT_MEMORY_ID: LazyLock<egui::Id> = LazyLock::new(|| egui::Id::new((file!(), 1)));
 
 struct SliderRegion<'a, P: Param> {
     param: &'a P,
@@ -102,6 +101,24 @@ impl<'a, P: Param> SliderRegion<'a, P> {
         );
     }
 
+    fn semi_granular_drag(&self, ui: &Ui, drag_delta: Vec2) {
+        // Remember the intial position when we started with the granular drag. This value gets
+        // reset whenever we have a normal itneraction with the slider.
+        let start_value = if Self::get_drag_amount_memory(ui) == 0.0 {
+            Self::set_drag_normalized_start_value_memory(ui, self.normalized_value());
+            self.normalized_value()
+        } else {
+            Self::get_drag_normalized_start_value_memory(ui)
+        };
+
+        let total_drag_distance = -drag_delta.y + Self::get_drag_amount_memory(ui);
+        Self::set_drag_amount_memory(ui, total_drag_distance);
+
+        self.set_normalized_value(
+            (start_value + (total_drag_distance * SEMI_GRANULAR_DRAG_MULTIPLIER)).clamp(0.0, 1.0),
+        );
+    }
+
     // Copied this to modify the normal drag behavior to not match a slider
     fn normal_drag(&self, ui: &Ui, drag_delta: Vec2) {
         let start_value = if Self::get_drag_amount_memory(ui) == 0.0 {
@@ -133,11 +150,11 @@ impl<'a, P: Param> SliderRegion<'a, P> {
         }
         if let Some(_clicked_pos) = response.interact_pointer_pos() {
             if ui.input(|mem| mem.modifiers.command) {
-                // Like double clicking, Ctrl+Click should reset the parameter
-                self.reset_param();
+                // And ctrl dragging should switch to a more granular input method
+                self.semi_granular_drag(ui, response.drag_delta());
                 response.mark_changed();
             } else if ui.input(|mem| mem.modifiers.shift) {
-                // And shift dragging should switch to a more granular input method
+                // And shift dragging should switch to a VERY granular input method
                 self.granular_drag(ui, response.drag_delta());
                 response.mark_changed();
             } else {
@@ -150,7 +167,7 @@ impl<'a, P: Param> SliderRegion<'a, P> {
             self.reset_param();
             response.mark_changed();
         }
-        if response.drag_released() {
+        if response.drag_stopped() {
             self.param_setter.end_set_parameter(self.param);
             Self::set_drag_amount_memory(ui, 0.0);
         }
@@ -184,6 +201,20 @@ pub struct ArcKnob<'a, P: Param> {
     layout: KnobLayout,
     arc_start: f32,
     arc_end: f32,
+
+    black01: Color32,
+    black02: Color32,
+    text04: Color32,
+    fill04: Color32,
+    fill07: Color32,
+    white01: Color32,
+
+    darkgrey20: Color32,
+    darkgrey18: Color32,
+    darkgrey16: Color32,
+    darkgrey14: Color32,
+    darkgrey12: Color32,
+    darkgrey10: Color32,
 }
 
 #[allow(dead_code)]
@@ -244,6 +275,22 @@ impl<'a, P: Param> ArcKnob<'a, P> {
                 KnobLayout::Horizonal => -0.75,
                 KnobLayout::HorizontalInline => -0.75,
             },
+            black01: Color32::BLACK.linear_multiply(0.1),
+            black02: Color32::BLACK.linear_multiply(0.2),
+
+            text04: Color32::PLACEHOLDER.linear_multiply(0.4),
+
+            fill04: Color32::BLACK.linear_multiply(0.4),
+            fill07: Color32::BLACK.linear_multiply(0.7),
+
+            white01: Color32::WHITE.linear_multiply(0.1),
+
+            darkgrey20: Color32::DARK_GRAY.gamma_multiply(0.20),
+            darkgrey18: Color32::DARK_GRAY.gamma_multiply(0.18),
+            darkgrey16: Color32::DARK_GRAY.gamma_multiply(0.16),
+            darkgrey14: Color32::DARK_GRAY.gamma_multiply(0.14),
+            darkgrey12: Color32::DARK_GRAY.gamma_multiply(0.12),
+            darkgrey10: Color32::DARK_GRAY.gamma_multiply(0.10),
         }
     }
 
@@ -256,6 +303,7 @@ impl<'a, P: Param> ArcKnob<'a, P> {
     // Change the text color if you want it separate from line color
     pub fn override_text_color(mut self, text_color: Color32) -> Self {
         self.text_color_override = text_color;
+        self.text04 = text_color.linear_multiply(0.4);
         self
     }
 
@@ -292,12 +340,17 @@ impl<'a, P: Param> ArcKnob<'a, P> {
     // Specify line color for knob outside
     pub fn set_line_color(mut self, new_color: Color32) -> Self {
         self.line_color = new_color;
+        if self.text_color_override == Color32::PLACEHOLDER {
+            self.text04 = new_color.linear_multiply(0.4);
+        }
         self
     }
 
     // Specify fill color for knob
     pub fn set_fill_color(mut self, new_color: Color32) -> Self {
         self.fill_color = new_color;
+        self.fill04 = new_color.linear_multiply(0.4);
+        self.fill07 = new_color.linear_multiply(0.7);
         self
     }
 
@@ -412,18 +465,18 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
             // Background Rect
             ui.painter().rect_filled(
                 response.rect,
-                Rounding::from(4.0),
-                Color32::BLACK.linear_multiply(0.1),
+                CornerRadius::from(4.0),
+                self.black01,
             );
             ui.painter().rect_filled(
                 response.rect,
-                Rounding::from(4.0),
-                self.fill_color.linear_multiply(0.4),
+                CornerRadius::from(4.0),
+                self.fill04,
             );
 
             // Draw the outside ring around the control
             if self.outline {
-                let outline_stroke = Stroke::new(1.0, self.fill_color.linear_multiply(0.7));
+                let outline_stroke = Stroke::new(1.0, self.fill07);
                 let outline_shape = Shape::Path(PathShape {
                     points: get_arc_points(
                         self.arc_start,
@@ -434,8 +487,8 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                         0.03,
                     ),
                     closed: false,
-                    fill: self.fill_color.linear_multiply(0.7),
-                    stroke: outline_stroke,
+                    fill: self.fill07,
+                    stroke: outline_stroke.into(),
                 });
                 painter.add(outline_shape);
             }
@@ -454,12 +507,12 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: arc_stroke,
+                stroke: arc_stroke.into(),
             });
             painter.add(shape);
 
             // Arc Balls
-            let ball_width = self.line_width / 5.0;
+            let ball_width = self.line_width / 5.5;
             let ball_line_stroke = Stroke::new(ball_width, self.line_color);
             let start_ball = Shape::Circle(CircleShape {
                 center: get_start_point(self.arc_start, center, arc_radius + ball_width),
@@ -495,16 +548,12 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
             painter.add(circle_shape);
 
             // Gradient values
-            let g2 = value - 0.04;
-            let g3 = value - 0.08;
-            let g4 = value - 0.12;
-            let g5 = value - 0.16;
-            let g6 = value - 0.20;
-            let g7 = value - 0.24;
-            let g8 = value - 0.28;
-            let g9 = value - 0.32;
-            let g10 = value - 0.36;
-            let g11 = value - 0.40;
+            let g2 = value - 0.06;
+            let g3 = value - 0.12;
+            let g4 = value - 0.18;
+            let g5 = value - 0.24;
+            let g6 = value - 0.32;
+            let g7 = value - 0.40;
 
             // Draw our marker lines/gradient
             let visual_end = self.arc_start - 1.375;
@@ -518,10 +567,10 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g2 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.20)
+                        self.darkgrey20
                     } else {
                         Color32::TRANSPARENT
                     },
@@ -538,10 +587,10 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g3 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.18)
+                        self.darkgrey18
                     } else {
                         Color32::TRANSPARENT
                     },
@@ -558,10 +607,10 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g4 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.16)
+                        self.darkgrey16
                     } else {
                         Color32::TRANSPARENT
                     },
@@ -578,10 +627,10 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g5 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.14)
+                        self.darkgrey14
                     } else {
                         Color32::TRANSPARENT
                     },
@@ -598,10 +647,10 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g6 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.12)
+                        self.darkgrey12
                     } else {
                         Color32::TRANSPARENT
                     },
@@ -618,96 +667,16 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
+                stroke: PathStroke::new(
                     ball_width * 3.0,
                     if g7 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.10)
+                        self.darkgrey10
                     } else {
                         Color32::TRANSPARENT
                     },
                 ),
             });
             painter.add(line_shape6);
-            let line_shape7 = Shape::Path(PathShape {
-                points: get_pointer_points(
-                    self.arc_start,
-                    visual_end,
-                    center,
-                    arc_radius + ball_width,
-                    g8,
-                ),
-                closed: false,
-                fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
-                    ball_width * 3.0,
-                    if g8 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.08)
-                    } else {
-                        Color32::TRANSPARENT
-                    },
-                ),
-            });
-            painter.add(line_shape7);
-            let line_shape8 = Shape::Path(PathShape {
-                points: get_pointer_points(
-                    self.arc_start,
-                    visual_end,
-                    center,
-                    arc_radius + ball_width,
-                    g9,
-                ),
-                closed: false,
-                fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
-                    ball_width * 3.0,
-                    if g9 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.06)
-                    } else {
-                        Color32::TRANSPARENT
-                    },
-                ),
-            });
-            painter.add(line_shape8);
-            let line_shape9 = Shape::Path(PathShape {
-                points: get_pointer_points(
-                    self.arc_start,
-                    visual_end,
-                    center,
-                    arc_radius + ball_width,
-                    g10,
-                ),
-                closed: false,
-                fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
-                    ball_width * 3.0,
-                    if g10 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.04)
-                    } else {
-                        Color32::TRANSPARENT
-                    },
-                ),
-            });
-            painter.add(line_shape9);
-            let line_shape10 = Shape::Path(PathShape {
-                points: get_pointer_points(
-                    self.arc_start,
-                    visual_end,
-                    center,
-                    arc_radius + ball_width,
-                    g11,
-                ),
-                closed: false,
-                fill: Color32::TRANSPARENT,
-                stroke: Stroke::new(
-                    ball_width * 3.0,
-                    if g11 > 0.0 {
-                        Color32::DARK_GRAY.gamma_multiply(0.02)
-                    } else {
-                        Color32::TRANSPARENT
-                    },
-                ),
-            });
-            painter.add(line_shape10);
 
             let line_shape = Shape::Path(PathShape {
                 points: get_pointer_points(
@@ -719,7 +688,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ),
                 closed: false,
                 fill: self.line_color,
-                stroke: Stroke::new(ball_width * 3.0, self.line_color),
+                stroke: PathStroke::new(ball_width * 3.0, self.line_color),
             });
             painter.add(line_shape);
 
@@ -739,8 +708,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                 ui.allocate_rect(
                     Rect::from_center_size(center, Vec2::new(self.radius * 2.0, self.radius * 2.0)),
                     Sense::hover(),
-                )
-                .on_hover_text_at_pointer(self.hover_text_content);
+                ).on_hover_text_at_pointer(self.hover_text_content);
             }
 
             // Label text from response rect bound
@@ -822,17 +790,17 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                     );
                     ui.painter().rect_filled(
                         readability_box,
-                        Rounding::from(16.0),
+                        CornerRadius::from(16.0),
                         self.fill_color,
                     );
                 }
 
                 let text_color: Color32;
                 // Setting text color
-                if self.text_color_override != Color32::PLACEHOLDER {
-                    text_color = self.text_color_override;
-                } else {
+                if self.text_color_override == Color32::PLACEHOLDER {
                     text_color = self.line_color;
+                } else {
+                    text_color = self.text_color_override;
                 }
 
                 if self.label_text.is_empty() {
@@ -844,7 +812,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                                 + ": "
                                 + &self.slider_region.get_string(),
                             FontId::proportional(self.text_size),
-                            Color32::BLACK.linear_multiply(0.2),
+                            self.black02,
                         );
                         painter.text(
                             label_pos,
@@ -853,7 +821,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                                 + ": "
                                 + &self.slider_region.get_string(),
                             FontId::proportional(self.text_size),
-                            text_color.linear_multiply(0.4),
+                            self.text04,
                         );
                     } else {
                         painter.text(
@@ -861,7 +829,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                             Align2::CENTER_CENTER,
                             self.slider_region.get_string(),
                             FontId::proportional(self.text_size),
-                            Color32::WHITE.linear_multiply(0.1),
+                            self.white01,
                         );
                         painter.text(
                             value_pos,
@@ -875,14 +843,14 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                             Align2::CENTER_CENTER,
                             self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            Color32::BLACK.linear_multiply(0.2),
+                            self.black02,
                         );
                         painter.text(
                             label_pos,
                             Align2::CENTER_CENTER,
                             self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            text_color.linear_multiply(0.4),
+                            self.text04,
                         );
                     }
                 } else {
@@ -892,14 +860,14 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                             Align2::CENTER_CENTER,
                             self.label_text.to_string() + ": " + &self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            Color32::BLACK.linear_multiply(0.2),
+                            self.black02,
                         );
                         painter.text(
                             label_pos,
                             Align2::CENTER_CENTER,
                             self.label_text.to_string() + ": " + &self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            text_color.linear_multiply(0.4),
+                            self.text04,
                         );
                     } else {
                         painter.text(
@@ -907,7 +875,7 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                             Align2::CENTER_CENTER,
                             self.label_text.to_string(),
                             FontId::proportional(self.text_size),
-                            Color32::WHITE.linear_multiply(0.1),
+                            self.white01,
                         );
                         painter.text(
                             value_pos,
@@ -921,14 +889,14 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
                             Align2::CENTER_CENTER,
                             self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            Color32::BLACK.linear_multiply(0.2),
+                            self.black02,
                         );
                         painter.text(
                             label_pos,
                             Align2::CENTER_CENTER,
                             self.slider_region.param.name(),
                             FontId::proportional(self.text_size),
-                            text_color.linear_multiply(0.4),
+                            self.text04,
                         );
                     }
                 }
@@ -939,34 +907,32 @@ impl<'a, P: Param> Widget for ArcKnob<'a, P> {
 }
 
 fn get_start_point(start: f32, center: Pos2, radius: f32) -> Pos2 {
-    let start_turns: f32 = start;
-    let angle = start_turns * TAU;
-    let x = center.x + radius * angle.cos();
-    let y = center.y + -radius * angle.sin();
+    let angle = start * TAU;
+    let (sin, cos) = angle.sin_cos();
+    let x = center.x + radius * cos;
+    let y = center.y - radius * sin;
     pos2(x, y)
 }
 
 fn get_end_point(start: f32, end: f32, center: Pos2, radius: f32, value: f32) -> Pos2 {
-    let start_turns: f32 = start;
-    let arc_length = lerp(0.0, end, value);
-    let end_turns = start_turns + arc_length;
-
+    let end_turns = start + lerp(0.0, end, value);
     let angle = end_turns * TAU;
-    let x = center.x + radius * angle.cos();
-    let y = center.y + -radius * angle.sin();
+    let (sin, cos) = angle.sin_cos();
+    let x = center.x + radius * cos;
+    let y = center.y - radius * sin;
     pos2(x, y)
 }
 
 fn get_pointer_points(start: f32, end: f32, center: Pos2, radius: f32, value: f32) -> Vec<Pos2> {
-    let start_turns: f32 = start;
-    let arc_length = lerp(0.0, end, value);
-    let end_turns = start_turns + arc_length;
-
+    let end_turns = start + lerp(0.0, end, value);
     let angle = end_turns * TAU;
-    let x = center.x + radius * angle.cos();
-    let y = center.y + -radius * angle.sin();
-    let short_x = center.x + (radius * 0.04) * angle.cos();
-    let short_y = center.y + (-radius * 0.04) * angle.sin();
+    let (sin, cos) = angle.sin_cos();
+
+    let x = center.x + radius * cos;
+    let y = center.y - radius * sin;
+    let short_x = center.x + (radius * 0.04) * cos;
+    let short_y = center.y - (radius * 0.04) * sin;
+
     vec![pos2(short_x, short_y), pos2(x, y)]
 }
 
@@ -978,21 +944,38 @@ fn get_arc_points(
     value: f32,
     max_arc_distance: f32,
 ) -> Vec<Pos2> {
-    let start_turns: f32 = start;
+    let start_turns = start;
     let arc_length = lerp(0.0, end, value);
     let end_turns = start_turns + arc_length;
 
-    let points = (arc_length.abs() / max_arc_distance).ceil() as usize;
-    let points = points.max(1);
-    (0..=points)
-        .map(|i| {
-            let t = i as f32 / (points - 1) as f32;
-            let angle = lerp(start_turns * TAU, end_turns * TAU, t);
-            let x = radius * angle.cos();
-            let y = -radius * angle.sin();
-            pos2(x, y) + center.to_vec2()
-        })
-        .collect()
+    // Calculate the number of points.  Avoid division by zero.
+    let points = (if arc_length.abs() > 0.0 {
+        (arc_length.abs() / max_arc_distance).ceil() as usize
+    } else {
+        1 // Ensure at least one point even for zero-length arcs.
+    }).max(1);
+
+
+    // Pre-calculate TAU multipliers and center offset
+    let start_angle = start_turns * TAU;
+    let end_angle = end_turns * TAU;
+    let center_vec = center.to_vec2();
+
+    // Use a pre-allocated vector for better performance
+    let mut points_vec = Vec::with_capacity(points + 1);  // +1 because of the <= in the original range
+    
+    // Iterate and calculate points
+    for i in 0..=points {
+        let t = i as f32 / points as f32; // Simplified division, no need for points - 1
+        let angle = lerp(start_angle, end_angle, t);
+
+        // Use direct calculation rather than calling cos/sin separately.
+        let (y, x) = angle.sin_cos(); // More efficient
+
+        points_vec.push(pos2(radius * x, -radius * y) + center_vec);
+    }
+
+    points_vec
 }
 
 // Moved lerp to this file to reduce dependencies - Ardura

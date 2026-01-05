@@ -98,6 +98,7 @@ impl Widget for DBMeter {
                 rounding,
                 self.background_color,
                 Stroke::new(1.0,self.border_color),
+                nih_plug_egui::egui::StrokeKind::Middle
             );
             let inner_rect = Rect::from_min_size(
                 outer_rect.min,
@@ -112,6 +113,7 @@ impl Widget for DBMeter {
                 rounding,
                 if self.level < 1.0 {self.bar_color} else {Color32::RED},
                 Stroke::new(1.0, Color32::TRANSPARENT),
+                nih_plug_egui::egui::StrokeKind::Middle
             );
 
             if animate {
