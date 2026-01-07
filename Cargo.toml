@@ -1,6 +1,6 @@
 [package]
 name = "Subhoofer"
-version = "2.2.2"
+version = "2.2.3"
 edition = "2021"
 authors = ["Ardura <azviscarra@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -15,10 +15,9 @@ crate-type = ["cdylib","lib"]
 
 [dependencies]
 atomic_float = "0.1"
-color-backtrace = "0.6.1"
 lazy_static = "1.4.0"
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225", features = ["assert_process_allocs"] }
-nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "bb274976ca138289436b0bfa209b2c8c13244225"}
+nih_plug = { git = "https://github.com/ardura/nih-plug.git", rev = "fc2ae2da8e8aef414f53a51c24ecf378448c93e1", features = ["assert_process_allocs"] }
+nih_plug_egui = { git = "https://github.com/ardura/nih-plug.git", rev = "fc2ae2da8e8aef414f53a51c24ecf378448c93e1"}
 once_cell = "1.18.0"
 rand = "0.8.5"
 
@@ -34,10 +33,6 @@ panic = 'unwind'
 incremental = false
 codegen-units = 16
 rpath = false
-#opt-level = 3
-#debug = false
-#lto = "fat"
-#strip = "symbols"
 
 [profile.profiling]
 inherits = "release"
